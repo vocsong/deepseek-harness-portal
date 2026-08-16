@@ -113,6 +113,14 @@ export function passwordLoginEnabled() {
   return getSetting('password_login_enabled', 'true') === 'true'
 }
 
+export function getInviteCode() {
+  return getSetting('invite_code', '').trim()
+}
+
+export function setInviteCode(code) {
+  setSetting('invite_code', String(code ?? '').trim())
+}
+
 // ---- instances ----
 
 export function createInstanceRow({ userId, slug, containerName, hostPort }) {

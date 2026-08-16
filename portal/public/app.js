@@ -4,7 +4,7 @@ let me = null
 let authMode = 'login' // 'login' | 'register'
 let otpStep = 'send'   // 'send' | 'verify'
 let pendingEmail = ''
-let cfg = { domain: '', instanceDomain: '', otpRegistrationEnabled: true, passwordLoginEnabled: true }
+let cfg = { domain: '', instanceDomain: '', otpRegistrationEnabled: true, passwordLoginEnabled: true, inviteCodeRequired: false }
 
 async function api(path, opts = {}) {
   const body = opts.body !== undefined ? JSON.stringify(opts.body) : undefined
@@ -64,6 +64,7 @@ function resetAuth() {
   $('#register-form').reset()
   $('#login-otp-code-row').classList.add('hidden')
   $('#register-otp-row').classList.add('hidden')
+  $('#register-invite-row').classList.toggle('hidden', !cfg.inviteCodeRequired)
   $('#login-otp-submit').textContent = 'Send code'
   $('#register-submit').textContent = 'Send code'
   renderAuthTabs()
@@ -129,11 +130,12 @@ $('#register-form').addEventListener('submit', async (e) => {
   const fd = new FormData(e.target)
   const email = fd.get('email')
   const name = fd.get('name')
+  const inviteCode = fd.get('inviteCode')
   $('#auth-msg').textContent = ''
   try {
     if (otpStep === 'send' || email !== pendingEmail) {
       await withButtonLoading($('#register-submit'), 'Sending…', () =>
-        api('/api/auth/register/request', { method: 'POST', body: { email } }))
+        api('/api/auth/register/request', { method: 'POST', body: { email, inviteCode } }))
       pendingEmail = email
       otpStep = 'verify'
       $('#register-otp-row').classList.remove('hidden')
@@ -142,7 +144,7 @@ $('#register-form').addEventListener('submit', async (e) => {
       return
     }
     await withButtonLoading($('#register-submit'), 'Creating account…', () =>
-      api('/api/auth/register/verify', { method: 'POST', body: { email, otp: fd.get('otp'), name } }))
+      api('/api/auth/register/verify', { method: 'POST', body: { email, otp: fd.get('otp'), name, inviteCode } }))
     await boot()
   } catch (err) {
     $('#auth-msg').textContent = err.message
@@ -271,6 +273,7 @@ async function renderUsers() {
 async function renderSettings() {
   const s = await api('/api/admin/settings')
   $('#settings-form').elements.emailDomains.value = s.emailDomains ?? ''
+  $('#settings-form').elements.inviteCode.value = s.inviteCode ?? ''
   $('#settings-form').elements.otpRegistrationEnabled.checked = s.otpRegistrationEnabled
   $('#settings-form').elements.passwordLoginEnabled.checked = s.passwordLoginEnabled
 }
@@ -324,6 +327,7 @@ $('#settings-form').addEventListener('submit', async (e) => {
   try {
     await api('/api/admin/settings', { method: 'POST', body: {
       emailDomains: fd.get('emailDomains'),
+      inviteCode: fd.get('inviteCode'),
       otpRegistrationEnabled: fd.get('otpRegistrationEnabled') === 'on',
       passwordLoginEnabled: fd.get('passwordLoginEnabled') === 'on',
     }})

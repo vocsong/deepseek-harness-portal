@@ -7,11 +7,11 @@ import { dirname, join } from 'node:path'
 import { config } from './config.js'
 import {
   createInstanceRow, createUser, deleteAllSessionsForUser, deleteInstance,
-  deleteUser, ensureAdmin, getEmailDomains, getInstanceById,
-  getInstanceByUserId, getInstanceBySlug, getUserByEmail, getUserById,
+  deleteUser, ensureAdmin, getEmailDomains, getInstanceById, getInstanceByUserId,
+  getInstanceBySlug, getInviteCode, getUserByEmail, getUserById,
   getUserByUsername, listInstancesWithUsers, listUsers, otpRegistrationEnabled,
-  passwordLoginEnabled, setSetting, setUserPassword, updateInstance,
-  updateUser, userForSession,
+  passwordLoginEnabled, setInviteCode, setSetting, setUserPassword,
+  updateInstance, updateUser, userForSession,
 } from './db.js'
 import { createSession, destroySession, hashPassword, isValidEmail, LEGACY_SESSION_COOKIES, normalizeEmail, verifyPassword, SESSION_COOKIE } from './auth.js'
 import { issueOtp, verifyOtp } from './otp.js'
@@ -120,6 +120,10 @@ fastify.post('/api/auth/register/request', async (req, reply) => {
   if (!otpRegistrationEnabled()) {
     return reply.code(403).send({ error: 'registration is disabled' })
   }
+  const invite = getInviteCode()
+  if (invite !== '' && String(req.body?.inviteCode ?? '').trim() !== invite) {
+    return reply.code(403).send({ error: 'invalid invitation code' })
+  }
   const email = normalizeEmail(req.body?.email)
   if (!isValidEmail(email)) return reply.code(400).send({ error: 'enter a valid email address' })
   if (!emailAllowed(email)) return reply.code(403).send({ error: 'this email domain is not allowed to register' })
@@ -133,6 +137,10 @@ fastify.post('/api/auth/register/request', async (req, reply) => {
 fastify.post('/api/auth/register/verify', async (req, reply) => {
   if (!otpRegistrationEnabled()) {
     return reply.code(403).send({ error: 'registration is disabled' })
+  }
+  const invite = getInviteCode()
+  if (invite !== '' && String(req.body?.inviteCode ?? '').trim() !== invite) {
+    return reply.code(403).send({ error: 'invalid invitation code' })
   }
   const email = normalizeEmail(req.body?.email)
   const otp = String(req.body?.otp ?? '')
@@ -349,6 +357,7 @@ fastify.get('/api/admin/settings', async (req, reply) => {
   if (!requireAdmin(req, reply)) return
   return {
     emailDomains: getEmailDomains().join(', '),
+    inviteCode: getInviteCode(),
     otpRegistrationEnabled: otpRegistrationEnabled(),
     passwordLoginEnabled: passwordLoginEnabled(),
   }
@@ -356,15 +365,17 @@ fastify.get('/api/admin/settings', async (req, reply) => {
 
 fastify.post('/api/admin/settings', async (req, reply) => {
   if (!requireAdmin(req, reply)) return
-  const { emailDomains, otpRegistrationEnabled: regEnabled, passwordLoginEnabled: pwEnabled } = req.body ?? {}
+  const { emailDomains, inviteCode, otpRegistrationEnabled: regEnabled, passwordLoginEnabled: pwEnabled } = req.body ?? {}
   if (emailDomains !== undefined) {
     const cleaned = String(emailDomains).split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter((s) => s.includes('.') && !s.includes('@') && !s.startsWith('.'))
     setSetting('email_domains', cleaned.join(','))
   }
+  if (inviteCode !== undefined) setInviteCode(inviteCode)
   if (regEnabled !== undefined) setSetting('otp_registration_enabled', regEnabled ? 'true' : 'false')
   if (pwEnabled !== undefined) setSetting('password_login_enabled', pwEnabled ? 'true' : 'false')
   return {
     emailDomains: getEmailDomains().join(', '),
+    inviteCode: getInviteCode(),
     otpRegistrationEnabled: otpRegistrationEnabled(),
     passwordLoginEnabled: passwordLoginEnabled(),
   }
@@ -471,6 +482,7 @@ fastify.get('/api/config', async () => ({
   instanceDomain: config.instanceDomain,
   otpRegistrationEnabled: otpRegistrationEnabled(),
   passwordLoginEnabled: passwordLoginEnabled(),
+  inviteCodeRequired: getInviteCode() !== '',
 }))
 
 // ---- helpers ---------------------------------------------------------------

@@ -46,6 +46,9 @@
         <h2>Register</h2>
         <label>Email<input name="email" type="email" autocomplete="email" required /></label>
         <label>Name (optional)<input name="name" autocomplete="name" /></label>
+        <div class="hidden" id="register-invite-row">
+          <label>Invitation code<input name="inviteCode" autocomplete="off" /></label>
+        </div>
         <div class="otp-row hidden" id="register-otp-row">
           <label>6-digit code<input name="otp" inputmode="numeric" maxlength="6" /></label>
         </div>
@@ -104,6 +107,7 @@
         <h3>Registration &amp; auth</h3>
         <form id="settings-form">
           <label>Allowed email domains (comma-separated; empty = allow all)<input name="emailDomains" placeholder="company.com, gmail.com" /></label>
+          <label>Invitation code (optional; empty = open registration)<input name="inviteCode" autocomplete="off" placeholder="leave blank to disable" /></label>
           <label class="check"><input type="checkbox" name="otpRegistrationEnabled" /> Allow new registrations (email OTP)</label>
           <label class="check"><input type="checkbox" name="passwordLoginEnabled" /> Allow password login</label>
           <button class="btn primary" type="submit">Save settings</button>
