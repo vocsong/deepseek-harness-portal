@@ -491,6 +491,23 @@ async function waitUntilRunning(inst) {
   }
 }
 
+// Stop running instances that have received no proxied requests within the
+// idle window. `last_active` is bumped by every proxied request/upgrade.
+function idleSweep() {
+  const deadline = Date.now() - config.idleTimeoutMs
+  for (const inst of listInstancesWithUsers()) {
+    if (inst.status !== 'running') continue
+    const last = inst.last_active ?? inst.created_at
+    if (last > deadline) continue
+    stopContainer(inst.container_name)
+      .then(() => {
+        updateInstance(inst.id, { status: 'stopped', error: null })
+        console.log(`[portal] idle: stopped instance "${inst.slug}"`)
+      })
+      .catch((err) => console.error(`[portal] idle: failed to stop "${inst.slug}"`, err))
+  }
+}
+
 // ---- boot ------------------------------------------------------------------
 
 fastify.listen({ port: config.port, host: config.host }, (err) => {
@@ -502,4 +519,10 @@ fastify.listen({ port: config.port, host: config.host }, (err) => {
   console.log(`[portal] apex domain: ${config.domain}`)
   console.log(`[portal] cookie domain: ${config.cookieDomain || '(host-only)'}`)
   console.log(`[portal] otp dev mode: ${config.otpDevMode}`)
+  console.log(`[portal] idle stop after ${Math.round(config.idleTimeoutMs / 60000)}m (sweep every ${Math.round(config.idleSweepIntervalMs / 1000)}s)`)
+
+  // Periodic idle sweep. Keep the handle so the timer isn't GC'd; unref so it
+  // never blocks process shutdown.
+  const sweepTimer = setInterval(idleSweep, config.idleSweepIntervalMs)
+  sweepTimer.unref?.()
 })

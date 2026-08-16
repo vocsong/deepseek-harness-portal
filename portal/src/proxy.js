@@ -1,6 +1,7 @@
 import httpProxy from 'http-proxy'
 import { config } from './config.js'
-import { getInstanceBySlug, touchInstanceRequest, userForSession } from './db.js'
+import { getInstanceBySlug, touchInstanceRequest, updateInstance, userForSession } from './db.js'
+import { startContainer, containerRunning, waitHealthy } from './orchestrator.js'
 import { SESSION_COOKIE } from './auth.js'
 
 const proxy = httpProxy.createProxyServer({ xfwd: false })
@@ -45,6 +46,25 @@ function mayAccess(user, inst) {
 }
 
 /**
+ * Ensure an instance is running, starting it if it is stopped. Failed or
+ * still-provisioning instances are not auto-started (those need admin).
+ * After starting, waits until dsh actually serves HTTP before returning.
+ * @returns true once the instance is running and healthy.
+ */
+async function ensureRunning(inst) {
+  if (inst.status === 'failed') return false
+  if (inst.status === 'provisioning') return await containerRunning(inst.container_name)
+  if (inst.status === 'stopped' || !(await containerRunning(inst.container_name))) {
+    await startContainer(inst.container_name)
+  }
+  if (!(await containerRunning(inst.container_name))) return false
+  // Wait for the app to serve; a freshly started container isn't ready yet.
+  const healthy = await waitHealthy(inst.host_port, 30000)
+  if (healthy) updateInstance(inst.id, { status: 'running', error: null })
+  return healthy
+}
+
+/**
  * Route subdomain traffic to the owning instance. Registered as a fastify
  * onRequest hook (HTTP) plus a raw server 'upgrade' listener (WebSocket).
  */
@@ -58,13 +78,19 @@ export function setupProxy(fastify) {
       reply.code(404).type('text/plain').send('instance not found')
       return
     }
-    if (inst.status !== 'running') {
-      reply.code(503).type('text/plain').send('instance not running')
-      return
-    }
     const user = userForSession(req.cookies?.[SESSION_COOKIE])
     if (!mayAccess(user, inst)) {
       reply.code(302).header('location', `https://${config.domain}/login`).send()
+      return reply
+    }
+    // Auto-start on access (launch always works); start is fast for a stopped
+    // container. If it fails, report not-running instead of a hung proxy.
+    let running = inst.status === 'running' && (await containerRunning(inst.container_name))
+    if (!running && inst.status !== 'failed' && inst.status !== 'provisioning') {
+      running = await ensureRunning(inst)
+    }
+    if (!running) {
+      reply.code(503).type('text/plain').send('instance starting, try again in a moment')
       return reply
     }
     touchInstanceRequest(slug)
@@ -72,19 +98,27 @@ export function setupProxy(fastify) {
     proxy.web(req.raw, reply.raw, { target: `http://127.0.0.1:${inst.host_port}` })
   })
 
-  fastify.server.on('upgrade', (req, socket, head) => {
+  fastify.server.on('upgrade', async (req, socket, head) => {
     const slug = slugFromHost(req.headers.host)
     if (slug === null) {
       socket.destroy()
       return
     }
     const inst = getInstanceBySlug(slug)
-    if (inst === null || inst.status !== 'running') {
+    if (inst === null) {
       socket.destroy()
       return
     }
     const user = userForSession(cookieToken(req.headers.cookie))
     if (!mayAccess(user, inst)) {
+      socket.destroy()
+      return
+    }
+    let running = inst.status === 'running' && (await containerRunning(inst.container_name))
+    if (!running && inst.status !== 'failed' && inst.status !== 'provisioning') {
+      running = await ensureRunning(inst)
+    }
+    if (!running) {
       socket.destroy()
       return
     }

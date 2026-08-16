@@ -212,21 +212,12 @@ async function renderUser() {
     $('#i-requests').textContent = instance.request_count ?? 0
     $('#i-active').textContent = fmtTime(instance.last_active)
     $('#i-error').textContent = instance.error || ''
-    const running = instance.status === 'running'
-    $('#i-launch').classList.toggle('hidden', !running)
-    $('#i-start').disabled = running
-    $('#i-stop').disabled = !running
+    // Launch always works: the proxy auto-starts a stopped instance.
+    $('#i-launch').classList.remove('hidden')
   } catch (err) {
     $('#instance-empty').textContent = err.message
   }
 }
-
-$('#i-start').addEventListener('click', async () => {
-  try { await api('/api/instance/start', { method: 'POST' }); await renderUser() } catch (err) { alert(err.message) }
-})
-$('#i-stop').addEventListener('click', async () => {
-  try { await api('/api/instance/stop', { method: 'POST' }); await renderUser() } catch (err) { alert(err.message) }
-})
 
 // ---- admin view ----
 
@@ -254,8 +245,6 @@ async function renderInstances() {
       <td>${i.request_count ?? 0}</td>
       <td>${fmtTime(i.last_active)}</td>
       <td>
-        <button class="btn" data-act="start" data-id="${i.id}">Start</button>
-        <button class="btn" data-act="stop" data-id="${i.id}">Stop</button>
         <button class="btn" data-act="reprovision" data-id="${i.id}">Reprovision</button>
         <button class="btn" data-act="logs" data-id="${i.id}">Logs</button>
         <button class="btn" data-act="delete" data-id="${i.id}">Delete</button>

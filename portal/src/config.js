@@ -44,6 +44,11 @@ export const config = {
   instanceCpus: process.env.INSTANCE_CPUS ?? '2',
   instanceMemory: process.env.INSTANCE_MEMORY ?? '2g',
 
+  // Auto-stop instances after this much inactivity (no proxied requests).
+  idleTimeoutMs: num('INSTANCE_IDLE_TIMEOUT_MS', 15 * 60 * 1000),
+  // How often the idle sweep runs.
+  idleSweepIntervalMs: num('INSTANCE_IDLE_SWEEP_INTERVAL_MS', 60 * 1000),
+
   // ---- email / OTP ----
   smtp: {
     host: process.env.SMTP_HOST ?? '',
