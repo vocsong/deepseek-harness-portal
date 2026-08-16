@@ -171,6 +171,10 @@ export function deleteSession(token) {
   db.prepare('DELETE FROM sessions WHERE token = ?').run(token)
 }
 
+export function deleteAllSessionsForUser(userId) {
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
+}
+
 export function userForSession(token) {
   if (!token) return null
   const row = db.prepare(

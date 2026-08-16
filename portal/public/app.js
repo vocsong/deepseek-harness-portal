@@ -10,6 +10,7 @@ async function api(path, opts = {}) {
   const res = await fetch(path, {
     headers: { 'content-type': 'application/json' },
     credentials: 'same-origin',
+    cache: 'no-store',
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   })

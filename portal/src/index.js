@@ -6,11 +6,12 @@ import { dirname, join } from 'node:path'
 
 import { config } from './config.js'
 import {
-  createInstanceRow, createUser, deleteInstance, ensureAdmin, getEmailDomains,
-  getInstanceById, getInstanceByUserId, getInstanceBySlug, getUserByEmail,
-  getUserById, getUserByUsername, listInstancesWithUsers, listUsers,
-  otpRegistrationEnabled, passwordLoginEnabled, setSetting, setUserPassword,
-  updateInstance, updateUser, userForSession,
+  createInstanceRow, createUser, deleteAllSessionsForUser, deleteInstance,
+  ensureAdmin, getEmailDomains, getInstanceById, getInstanceByUserId,
+  getInstanceBySlug, getUserByEmail, getUserById, getUserByUsername,
+  listInstancesWithUsers, listUsers, otpRegistrationEnabled,
+  passwordLoginEnabled, setSetting, setUserPassword, updateInstance,
+  updateUser, userForSession,
 } from './db.js'
 import { createSession, destroySession, hashPassword, isValidEmail, normalizeEmail, verifyPassword, SESSION_COOKIE } from './auth.js'
 import { issueOtp, verifyOtp } from './otp.js'
@@ -41,6 +42,11 @@ for (const inst of listInstancesWithUsers()) {
     provision(inst.id).catch((err) => console.error('[provision]', err))
   }
 }
+
+// Never cache API responses (the session state must always be fresh).
+fastify.addHook('onSend', async (req, reply) => {
+  if (req.raw.url?.startsWith('/api/')) reply.header('Cache-Control', 'no-store')
+})
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -193,11 +199,18 @@ fastify.post('/api/auth/login/verify', async (req, reply) => {
 
 fastify.post('/api/auth/logout', async (req, reply) => {
   const token = req.cookies?.[SESSION_COOKIE]
-  if (token) destroySession(token)
-  reply.clearCookie(SESSION_COOKIE, {
-    path: '/',
-    ...(config.cookieDomain ? { domain: config.cookieDomain } : {}),
-  })
+  const user = token ? userForSession(token) : null
+  if (user) {
+    // Kill every session for this user, not just the presented cookie — a
+    // browser may carry stale duplicate session cookies (host-only vs domain).
+    deleteAllSessionsForUser(user.id)
+  } else if (token) {
+    destroySession(token)
+  }
+  // Clear the cookie in both scopes and with the same flags it was set with.
+  const base = { path: '/', sameSite: 'lax', secure: config.cookieDomain !== '' }
+  reply.clearCookie(SESSION_COOKIE, { ...base, ...(config.cookieDomain ? { domain: config.cookieDomain } : {}) })
+  reply.clearCookie(SESSION_COOKIE, { path: '/' })
   return { ok: true }
 })
 
