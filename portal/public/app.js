@@ -132,11 +132,9 @@ $('#register-form').addEventListener('submit', async (e) => {
   }
 })
 
-$('#logout').addEventListener('click', async () => {
-  try { await api('/api/auth/logout', { method: 'POST' }) } catch { /* ignore */ }
-  // Full navigation so no in-memory state or stale view survives.
-  window.location.href = '/'
-})
+// Logout is a plain link (GET /api/auth/logout) — full browser navigation,
+// no fetch/JS dependency, so no cache or in-memory state can survive it.
+// (No handler needed for #logout.)
 
 // ---- profile ----
 

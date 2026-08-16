@@ -200,7 +200,7 @@ fastify.post('/api/auth/login/verify', async (req, reply) => {
   return { user: publicUser(user) }
 })
 
-fastify.post('/api/auth/logout', async (req, reply) => {
+function clearSessionAndCookies(req, reply) {
   // A browser may carry several session cookies scoped to different domains
   // (host-only, .vocsong.com, .deepseek.vocsong.com, ...) accumulated across
   // config changes and cookie-name changes. fastify collapses duplicate names,
@@ -236,6 +236,16 @@ fastify.post('/api/auth/logout', async (req, reply) => {
       })
     }
   }
+}
+
+// GET logout: plain browser navigation — the most robust path (no JS/fetch).
+fastify.get('/api/auth/logout', async (req, reply) => {
+  clearSessionAndCookies(req, reply)
+  reply.redirect('/')
+})
+
+fastify.post('/api/auth/logout', async (req, reply) => {
+  clearSessionAndCookies(req, reply)
   return { ok: true }
 })
 
