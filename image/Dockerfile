@@ -10,7 +10,7 @@
 # Each instance is launched with a private DSH_HOME and workspace volume, and
 # trusts exactly its own subdomain (TRUSTED_HOST env).
 
-FROM node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436
+FROM node:24-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d
 
 # corepack (for pnpm) + git (lefthook postinstall) + curl (health checks)
 # + python3/build-essential (node-pty native addon compile)

@@ -35,7 +35,7 @@ OTP delivery uses SMTP (nodemailer), which is required in production. Code loggi
 | Portal app | `portal/` | Fastify server: auth (OTP + password, bcrypt, session cookie), admin/user JSON API, static dashboard, subdomain reverse proxy |
 | Orchestrator | `portal/src/orchestrator.js` | `podman` CLI wrappers: run/start/stop/rm/logs, port allocation, health polling, background provisioning |
 | Storage | `portal/data/portal.db` | SQLite (better-sqlite3): users, otps, settings, instances, sessions |
-| dsh image | `image/Dockerfile` | Builds the reviewed dsh image from an approved upstream commit, a dependency-security patch, and two documented source patches; tagged `dsh:47f9438-sec1` and deployed by its `sha256:` digest |
+| dsh image | `image/Dockerfile` | Builds the reviewed dsh image from an approved upstream commit, a dependency-security patch, and two documented source patches; tagged `dsh:47f9438-node24` (Node 24 LTS on Debian 13 trixie) and deployed by its `sha256:` digest |
 | dsh clone | `dsh/` | Fresh `deepseek-harness` checkout (build context, gitignored) |
 
 ### Per-instance model

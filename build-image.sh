@@ -1,10 +1,10 @@
 #!/bin/bash
-# Build dsh:latest from the approved upstream revision and tracked image patches.
+# Build the dsh image from the approved upstream revision and tracked image patches.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 APPROVED_DSH_COMMIT='47f943859bef60e4160492346772ded9b24f765a'
-IMAGE_TAG='dsh:47f9438-sec1'
+IMAGE_TAG='dsh:47f9438-node24'
 if [ ! -f dsh/package.json ]; then
   echo "error: dsh/ clone missing. See README.md for the pinned clone commands." >&2
   exit 1
@@ -50,7 +50,7 @@ cp .dockerignore "$CONTEXT/.dockerignore"
 
 podman build --pull=always -t "$IMAGE_TAG" -f "$CONTEXT/image/Dockerfile" "$CONTEXT"
 # Convenience tag for local inspection only; production orchestration uses the
-# immutable reviewed tag above.
+# immutable sha256 digest printed below.
 podman tag "$IMAGE_TAG" dsh:latest
 IMAGE_ID="$(podman image inspect "$IMAGE_TAG" --format '{{.Id}}')"
 echo "built $IMAGE_TAG from $APPROVED_DSH_COMMIT"
