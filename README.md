@@ -21,10 +21,10 @@ The portal is the **only** authentication entry point. It owns registration, log
 
 ## Authentication model
 
-- **Registration**: email + one-time code (OTP). No password required up front.
-- **After registering**: the user sets a **username + password** (and can change name/email) in **Profile**, and uses those to log in next time.
+- **Registration**: email + one-time code (OTP), with **optional username + password** set during signup (so a new user can log in with credentials right away). An invite code is enforced when the admin has set one.
+- **After registering**: anything can still be changed in **Profile** (name, username, email, password).
 - **Login**: username/password **or** "email me a code" (OTP fallback).
-- **Admin controls** (Settings tab): email-domain whitelist, toggle OTP registration, toggle password login.
+- **Admin controls** (Settings tab): email-domain whitelist, invite code, toggle OTP registration, toggle password login.
 
 OTP delivery uses SMTP (nodemailer). With no `SMTP_HOST` configured (or `OTP_DEV_MODE=true`) the code is logged to the portal console for local testing.
 
@@ -45,7 +45,7 @@ Each user gets exactly one instance (`1 user : 1 instance`):
 - **Container** `dsh-<slug>`, `--cpus 2 --memory 2g`, `--restart unless-stopped`
 - **Two volumes**: `<name>-home` (mounted at `$DSH_HOME` — sessions, settings, credentials) and `<name>-workspace` (mounted at `/workspace` — the agent's persistent cwd)
 - **Published** on `127.0.0.1:<port>` (never exposed beyond the host); the portal proxies to it
-- Launched with `TRUSTED_HOST=<slug>.<instanceDomain>` so dsh's browser-trust fence accepts the subdomain
+- The proxy presents traffic to the instance **as loopback** (`changeOrigin` rewrites `Host` to `127.0.0.1:<port>` and the browser's `Origin` is dropped) so dsh's loopback-only settings/credentials methods work; `TRUSTED_HOST=<slug>.<instanceDomain>` is still passed as a fallback
 - The user's DeepSeek API key is entered inside their instance (Settings → Models) and lives only in that instance's home volume
 
 ### Two build-time patches to dsh (see `image/Dockerfile`)
@@ -146,8 +146,8 @@ See `.env.example`. The important ones:
 
 ## Operations
 
-- **Admin**: log in as admin → Settings tab → email-domain whitelist + auth toggles. Instances tab → start/stop/reprovision/delete, view logs, usage (requests + last-active). Users tab → list users.
-- **User**: register with email OTP → set username/password in Profile → instance auto-provisions → dashboard shows URL + status + Start/Stop.
+- **Admin**: log in as admin → Settings tab → email-domain whitelist, invite code, auth toggles. Instances tab → reprovision/delete, view logs, usage (requests + last-active). Users tab → list users.
+- **User**: register (email OTP, optionally setting username/password) → instance auto-provisions → dashboard shows URL + status. Instances auto-start on launch and auto-stop after the idle timeout.
 - **Launch**: `https://<slug>.<instance-domain>` — the portal authenticates + authorizes, then proxies to the container.
 - **API key**: set per-instance inside dsh (Settings → Models).
 
