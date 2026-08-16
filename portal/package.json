@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Multi-tenant portal that provisions and routes isolated DeepSeek Harness containers.",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test --test-concurrency=1"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

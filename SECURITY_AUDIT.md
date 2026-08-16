@@ -29,7 +29,8 @@ The P0 portal/host containment pass has been deployed and verified:
 - **Resolved in the P1 auth pass:** SEC-04 (persistent per-IP/per-account/invite/SMTP throttling and OTP cooldown), SEC-08 (digested bearer tokens, absolute/idle server expiry, and security-event rotation/revocation), OTP account-enumeration responses, failed-delivery OTP preservation, and immediate/periodic WebSocket session revocation.
 - **Resolved in the image pass:** SEC-07 (reviewed semver-compatible transitive floors; built-image production audit now reports zero advisories) and SEC-15's current build/deployment risks (approved dsh commit, pinned Bookworm digest, reproducible security patch, fail-closed checks, and content-addressed production deployment). All tenant containers were recreated on the audited image while preserving their two data volumes.
 - **Resolved in the P2 lifecycle pass:** SEC-12 (persistent deletion tombstones, serialized verified cleanup, no force-removal of in-use data), SEC-13 (deduplicated state cache, per-instance lifecycle locks, and Podman timeouts), and SEC-16 (immediate/periodic socket revocation plus throttled inbound-frame activity accounting). SEC-11 is substantially contained with explicit rootless `pasta`, startup preflight, PID/CPU/memory/swap/log/tmpfs bounds, no capabilities, no-new-privileges, read-only roots, and loopback publication; named-volume quotas/orphan reconciliation remain defense-in-depth work.
-- **Still open:** SEC-09, named-volume quota/periodic orphan-reconciliation portions of SEC-11/SEC-12, the future Node 24/Trixie lifecycle migration, DEP-02, service-credential rotation at the external provider, checked-in automated security tests/CI, and the P3 registrable-domain redesign.
+- **Resolved in the verified-identity pass:** SEC-09. Email changes require two target-bound OTP proofs—one delivered to the current mailbox and one to the proposed mailbox—and atomically rotate all sessions/CSRF only after both succeed. Direct profile email mutation is rejected.
+- **Still open:** named-volume quota/periodic orphan-reconciliation portions of SEC-11/SEC-12, the future Node 24/Trixie lifecycle migration, DEP-02, service-credential rotation at the external provider, broader checked-in security tests/CI, and the P3 registrable-domain redesign.
 
 Live regression checks covered the CSRF deny/allow matrix, native POST logout, session invalidation, privileged `settings.describe`, malformed WebSocket cookies, HTTP/WS credential stripping, successful/rejected WS response-cookie filtering, headers, SMTP/bootstrap failure modes, persistent throttling, plaintext-token migration/WAL cleanup, profile token rotation, WebSocket revocation, OTP delivery failure, and portal health.
 
@@ -245,6 +246,8 @@ Store only a digest of each bearer token plus `expires_at` and optional idle exp
 ---
 
 ### SEC-09 — Medium: email login identity changes without verification or recent authentication
+
+**Status (2026-08-16): remediated.** Direct changes are rejected. The replacement flow binds independent proofs to the user, target, and mailbox role; stores and verifies both atomically; preserves a valid counterpart after a typo; rechecks policy/uniqueness; revokes every old session/WebSocket; and issues exactly one fresh session/CSRF token. Isolated HTTP and transactional race tests passed.
 
 **Evidence**
 

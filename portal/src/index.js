@@ -19,6 +19,7 @@ import {
 } from './auth.js'
 import { generateOtpCode, storeOtpCode, verifyOtp } from './otp.js'
 import { sendOtpCode } from './mailer.js'
+import { completeEmailChange, requestEmailChangeProofs } from './email-change.js'
 import { RATE_POLICIES, clearRateLimit, clientIp, consumeRateLimit } from './rate-limit.js'
 import {
   allocatePort, containerLogs, containerName, containerRunning, provision,
@@ -421,12 +422,8 @@ fastify.post('/api/profile', async (req, reply) => {
     if (n.length < 1 || n.length > 64) return reply.code(400).send({ error: 'name must be 1-64 characters' })
     fields.name = n
   }
-  if (email !== undefined) {
-    const e = normalizeEmail(email)
-    if (!isValidEmail(e)) return reply.code(400).send({ error: 'enter a valid email address' })
-    if (!emailAllowed(e)) return reply.code(403).send({ error: 'this email domain is not allowed' })
-    if (e !== user.email && getUserByEmail(e)) return reply.code(409).send({ error: 'that email is already in use' })
-    fields.email = e
+  if (email !== undefined && normalizeEmail(email) !== user.email) {
+    return reply.code(400).send({ error: 'use the verified email-change flow' })
   }
   if (newPassword !== undefined && newPassword !== '') {
     if (typeof newPassword !== 'string' || newPassword.length < 8) {
@@ -442,7 +439,6 @@ fastify.post('/api/profile', async (req, reply) => {
 
   if (Object.keys(fields).length === 0) return reply.code(400).send({ error: 'nothing to update' })
   const securityIdentityChanged = fields.password_hash !== undefined
-    || (fields.email !== undefined && fields.email !== user.email)
   updateUser(user.id, fields)
 
   let rotatedSession = null
@@ -457,6 +453,70 @@ fastify.post('/api/profile', async (req, reply) => {
     name: fresh.name, email: fresh.email, username: fresh.username,
     hasPassword: Boolean(fresh.password_hash),
     ...(rotatedSession ? { csrfToken: rotatedSession.csrfToken } : {}),
+  }
+})
+
+fastify.post('/api/profile/email-change/request', async (req, reply) => {
+  const user = requireUser(req, reply)
+  if (!user) return
+  const newEmail = normalizeEmail(req.body?.newEmail)
+  const subject = `profile-email:user:${user.id}`
+  if (!enforceIpAndSubjectLimit(req, reply, RATE_POLICIES.otpRequestIp, RATE_POLICIES.otpRequestAccount, subject)) return
+  if (!enforceRateLimit(req, reply, RATE_POLICIES.otpResendAccount, subject, {
+    windowMs: config.otpResendCooldownMs, blockMs: config.otpResendCooldownMs,
+  })) return
+  if (!isValidEmail(newEmail)) return reply.code(400).send({ error: 'enter a valid email address' })
+  if (!emailAllowed(newEmail)) return reply.code(403).send({ error: 'this email domain is not allowed' })
+  if (newEmail === user.email) return reply.code(400).send({ error: 'enter a different email address' })
+  if (getUserByEmail(newEmail)) return reply.code(409).send({ error: 'that email is already in use' })
+  // One approved request sends two separately bound proofs.
+  if (!enforceRateLimit(req, reply, RATE_POLICIES.smtpGlobal, 'global')) return
+  if (!enforceRateLimit(req, reply, RATE_POLICIES.smtpGlobal, 'global')) return
+  try {
+    await requestEmailChangeProofs(user, newEmail)
+  } catch (error) {
+    console.error('[profile] email-change delivery failed:', error?.message ?? error)
+    return reply.code(502).send({ error: 'verification email delivery failed; try again later' })
+  }
+  return reply.code(202).send({ ok: true, message: 'Codes were sent to your current and new email addresses.' })
+})
+
+fastify.post('/api/profile/email-change/verify', async (req, reply) => {
+  const user = requireUser(req, reply)
+  if (!user) return
+  const newEmail = normalizeEmail(req.body?.newEmail)
+  const currentCode = String(req.body?.currentOtp ?? '')
+  const newCode = String(req.body?.newOtp ?? '')
+  const subject = `profile-email:user:${user.id}`
+  if (!enforceIpAndSubjectLimit(req, reply, RATE_POLICIES.otpVerifyIp, RATE_POLICIES.otpVerifyAccount, subject)) return
+  if (!isValidEmail(newEmail) || !emailAllowed(newEmail) || newEmail === user.email
+      || !/^\d{6}$/.test(currentCode) || !/^\d{6}$/.test(newCode)) {
+    return reply.code(400).send({ error: 'email verification failed' })
+  }
+  if (getUserByEmail(newEmail)) return reply.code(409).send({ error: 'that email is already in use' })
+
+  let completed
+  try {
+    completed = completeEmailChange({
+      userId: user.id, currentEmail: user.email, newEmail, currentCode, newCode,
+    })
+  } catch (error) {
+    if (String(error?.message ?? error).includes('UNIQUE constraint')
+        || String(error?.message ?? error).includes('email-change-state-conflict')) {
+      return reply.code(409).send({ error: 'email address changed or is already in use; request new codes' })
+    }
+    throw error
+  }
+  if (!completed.ok) return reply.code(400).send({ error: 'email verification failed' })
+
+  clearRateLimit(RATE_POLICIES.otpVerifyAccount, subject)
+  clearRateLimit(RATE_POLICIES.otpRequestAccount, subject)
+  closeUserSockets(user.id)
+  setSessionCookie(reply, completed.result.token)
+  const fresh = getUserById(user.id)
+  return {
+    name: fresh.name, email: fresh.email, username: fresh.username,
+    hasPassword: Boolean(fresh.password_hash), csrfToken: completed.result.csrfToken,
   }
 })
 

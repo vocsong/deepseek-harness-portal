@@ -22,7 +22,7 @@ The portal is the **only** authentication entry point. It owns registration, log
 ## Authentication model
 
 - **Registration**: email + one-time code (OTP), with **optional username + password** set during signup (so a new user can log in with credentials right away). An invite code is enforced when the admin has set one.
-- **After registering**: anything can still be changed in **Profile** (name, username, email, password).
+- **After registering**: Profile can change name, username, password, and email. Email replacement requires separate codes from both the current and proposed mailboxes and revokes all other sessions.
 - **Login**: username/password **or** "email me a code" (OTP fallback).
 - **Admin controls** (Settings tab): email-domain whitelist, invite code, toggle OTP registration, toggle password login.
 
