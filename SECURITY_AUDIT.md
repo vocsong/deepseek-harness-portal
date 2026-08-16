@@ -22,7 +22,7 @@ The report recommends immediate containment and a small atomic portal hotfix bef
 
 ## Remediation status (2026-08-16)
 
-The P0 portal/host containment pass has been deployed and verified:
+Every P0–P2 containment, authentication, image, lifecycle, and verified-identity remediation below has been deployed, independently reviewed, and committed. The remediation series concluded at portal commit `001d07c70326837eb089d07ca6cc62493d4d36d4`; `git log` retains the per-pass history (P0 `a108765`, P1 `1b0768c`, image `6049c1d`, lifecycle `d7dc582`, verified identity `001d07c`).
 
 - **Resolved:** SEC-01 (fail-closed OTP production configuration), SEC-02 (HTTP/WS credential and response-cookie isolation), SEC-03 (exact-Origin + per-session CSRF), SEC-05 (safe admin bootstrap), SEC-06 (deny-by-default build context), SEC-10 (malformed WS containment), SEC-14 (browser headers), GET logout, and raw proxy error disclosure.
 - **Resolved operationally:** DEP-01 ACLs were restricted to the operator/Administrators/SYSTEM; the known test administrator was removed; all pre-fix sessions and OTPs were invalidated; the invitation secret was rotated to a cryptographically random value.
@@ -393,9 +393,9 @@ Track sockets by session/user and close them on revocation/expiry. Prefer short-
 
 ### Low findings
 
-- **GET logout CSRF:** `portal/src/index.js:267-271` allows forced logout; replace with protected POST only.
-- **Internal proxy error disclosure:** `portal/src/proxy.js:21-25` returns `err.message`; return a generic 502 and log sanitized detail.
-- **No disclosure/dependency automation policy:** no tracked `SECURITY.md`, Dependabot/Renovate config, or security CI was found.
+- **GET logout CSRF** *(resolved 2026-08-16)*: logout is now native POST with per-session CSRF + exact-Origin validation.
+- **Internal proxy error disclosure** *(resolved 2026-08-16)*: proxy errors return a generic 502; detail is logged sanitized.
+- **No dependency/security automation policy** *(partially resolved)*: `SECURITY.md` is now tracked; Dependabot/Renovate and a security CI pipeline remain open follow-ups.
 
 ## Operational observation requiring immediate private handling
 

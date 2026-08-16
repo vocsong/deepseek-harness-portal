@@ -35,7 +35,7 @@ OTP delivery uses SMTP (nodemailer), which is required in production. Code loggi
 | Portal app | `portal/` | Fastify server: auth (OTP + password, bcrypt, session cookie), admin/user JSON API, static dashboard, subdomain reverse proxy |
 | Orchestrator | `portal/src/orchestrator.js` | `podman` CLI wrappers: run/start/stop/rm/logs, port allocation, health polling, background provisioning |
 | Storage | `portal/data/portal.db` | SQLite (better-sqlite3): users, otps, settings, instances, sessions |
-| dsh image | `image/Dockerfile` | Builds immutable tag `dsh:47f9438-sec1` from an approved upstream commit, a reviewed dependency-security patch, and two documented source patches |
+| dsh image | `image/Dockerfile` | Builds the reviewed dsh image from an approved upstream commit, a dependency-security patch, and two documented source patches; tagged `dsh:47f9438-sec1` and deployed by its `sha256:` digest |
 | dsh clone | `dsh/` | Fresh `deepseek-harness` checkout (build context, gitignored) |
 
 ### Per-instance model
@@ -150,14 +150,25 @@ See `.env.example`. The important ones:
 | `PORT` | `8080` | Portal listen port (cloudflared connects here) |
 | `ADMIN_EMAIL` / `ADMIN_NAME` / `ADMIN_PASSWORD` | *(empty)* | First-boot admin; password must be explicit and at least 16 characters |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | *(empty)* | Production OTP delivery; host/from required, auth values paired |
+| `OTP_TTL_MS` / `OTP_MAX_ATTEMPTS` | 10 min / 5 | OTP lifetime and per-code attempt cap |
 | `AUTH_RATE_WINDOW_MS` / `AUTH_RATE_BLOCK_MS` | 15 min / 15 min | Persistent authentication throttling window/block |
 | `OTP_RESEND_COOLDOWN_MS` | `60000` | Minimum interval between OTP requests per address/purpose |
 | `PORT_RANGE_START` / `END` | `18000` / `18100` | Host loopback port pool |
 | `DSH_IMAGE` | required | Immutable `sha256:...` image ID printed by `./build-image.sh`; mutable tags are rejected in production |
+| `PODMAN_COMMAND_TIMEOUT_MS` | `60000` | Per-subprocess timeout for every `podman` call |
 | `INSTANCE_CPUS` / `INSTANCE_MEMORY` / `INSTANCE_MEMORY_SWAP` | `2` / `2g` / `2g` | Per-instance compute limits |
 | `INSTANCE_PIDS_LIMIT` | `512` | Per-container process limit |
 | `INSTANCE_NETWORK` | `pasta` | Required isolated rootless network mode |
 | `INSTANCE_LOG_SIZE` / `INSTANCE_TMPFS_SIZE` | `10mb` / `64m` | Bounded runtime log and temporary storage |
+| `INSTANCE_READ_ONLY_ROOT` | `true` | Run tenant containers with a read-only root filesystem |
+
+## Testing
+
+```sh
+cd portal && npm test
+```
+
+Runs the isolated transactional regression suite (email-change proof binding, attempt accounting, and uniqueness/session rollback) against a temporary SQLite database in `portal/test/`. It does not touch live data, send email, or require Podman.
 
 ## Operations
 
@@ -190,10 +201,14 @@ Containers carry `--restart unless-stopped`; platform behavior after a WSL machi
 ```
 deepseek-portal/
   portal/            Fastify app + static dashboard
-  image/             Dockerfile + start.sh (dsh image)
+    src/             backend modules (auth, db, otp, mailer, proxy, orchestrator, email-change)
+    test/            transactional regression suite (npm test)
+  image/             Dockerfile + start.sh + dsh-security.patch (dsh image)
   dsh/               fresh upstream clone (build context, gitignored)
   build-image.sh
   run-portal.sh
   .env.example
   README.md
+  SECURITY_AUDIT.md  full audit, findings, and remediation status
+  SECURITY.md        vulnerability disclosure policy
 ```
