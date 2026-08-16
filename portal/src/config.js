@@ -40,6 +40,9 @@ export const config = {
 
   // Session cookie Domain. Empty = host-only (local dev).
   cookieDomain: process.env.COOKIE_DOMAIN ?? '',
+  sessionAbsoluteTtlMs: num('SESSION_ABSOLUTE_TTL_MS', 7 * 24 * 60 * 60 * 1000),
+  sessionIdleTtlMs: num('SESSION_IDLE_TTL_MS', 24 * 60 * 60 * 1000),
+  sessionTouchIntervalMs: num('SESSION_TOUCH_INTERVAL_MS', 60 * 1000),
 
   dataDir: process.env.DATA_DIR ?? join(root, 'data'),
   image: process.env.DSH_IMAGE ?? 'dsh:latest',
@@ -76,6 +79,9 @@ export const config = {
   otpDevMode: process.env.OTP_DEV_MODE === 'true',
   otpTtlMs: num('OTP_TTL_MS', 10 * 60 * 1000),
   otpMaxAttempts: num('OTP_MAX_ATTEMPTS', 5),
+  authRateWindowMs: num('AUTH_RATE_WINDOW_MS', 15 * 60 * 1000),
+  authRateBlockMs: num('AUTH_RATE_BLOCK_MS', 15 * 60 * 1000),
+  otpResendCooldownMs: num('OTP_RESEND_COOLDOWN_MS', 60 * 1000),
 }
 
 export function validateConfig() {
@@ -95,6 +101,20 @@ export function validateConfig() {
   if (!Number.isInteger(config.smtp.port) || config.smtp.port < 1 || config.smtp.port > 65535) {
     throw new Error('SMTP_PORT must be an integer from 1 to 65535')
   }
-  if (!Number.isFinite(config.otpTtlMs) || config.otpTtlMs <= 0) throw new Error('OTP_TTL_MS must be positive')
+  const positiveMs = [
+    ['OTP_TTL_MS', config.otpTtlMs],
+    ['SESSION_ABSOLUTE_TTL_MS', config.sessionAbsoluteTtlMs],
+    ['SESSION_IDLE_TTL_MS', config.sessionIdleTtlMs],
+    ['SESSION_TOUCH_INTERVAL_MS', config.sessionTouchIntervalMs],
+    ['AUTH_RATE_WINDOW_MS', config.authRateWindowMs],
+    ['AUTH_RATE_BLOCK_MS', config.authRateBlockMs],
+    ['OTP_RESEND_COOLDOWN_MS', config.otpResendCooldownMs],
+  ]
+  for (const [name, value] of positiveMs) {
+    if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive`)
+  }
+  if (config.sessionIdleTtlMs > config.sessionAbsoluteTtlMs) {
+    throw new Error('SESSION_IDLE_TTL_MS cannot exceed SESSION_ABSOLUTE_TTL_MS')
+  }
   if (!Number.isInteger(config.otpMaxAttempts) || config.otpMaxAttempts < 1) throw new Error('OTP_MAX_ATTEMPTS must be a positive integer')
 }

@@ -10,6 +10,12 @@ export function verifyPassword(password, hash) {
   return bcrypt.compareSync(password, hash)
 }
 
+// Keep unknown-account password login work comparable to a real bcrypt check.
+const DUMMY_PASSWORD_HASH = '$2b$10$lYb30bgLzBya7R2tNruL6.Xrbeb56pbfEXQgXKc.Tafxo/1DK53ny'
+export function verifyPasswordOrDummy(password, hash) {
+  return bcrypt.compareSync(password, hash || DUMMY_PASSWORD_HASH)
+}
+
 export function normalizeEmail(email) {
   return String(email ?? '').trim().toLowerCase()
 }

@@ -140,9 +140,12 @@ See `.env.example`. The important ones:
 | `INSTANCE_DOMAIN` | `example.com` | Base for `<slug>.<instanceDomain>` |
 | `INSTANCE_SLUG_SUFFIX` | `-deepseek` | Appended to the slug |
 | `COOKIE_DOMAIN` | *(empty)* | Session cookie domain (must cover apex + instances) |
+| `SESSION_ABSOLUTE_TTL_MS` / `SESSION_IDLE_TTL_MS` | 7 days / 24 hours | Server-enforced session lifetime and idle expiry |
 | `PORT` | `8080` | Portal listen port (cloudflared connects here) |
 | `ADMIN_EMAIL` / `ADMIN_NAME` / `ADMIN_PASSWORD` | *(empty)* | First-boot admin; password must be explicit and at least 16 characters |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | *(empty)* | Production OTP delivery; host/from required, auth values paired |
+| `AUTH_RATE_WINDOW_MS` / `AUTH_RATE_BLOCK_MS` | 15 min / 15 min | Persistent authentication throttling window/block |
+| `OTP_RESEND_COOLDOWN_MS` | `60000` | Minimum interval between OTP requests per address/purpose |
 | `PORT_RANGE_START` / `END` | `18000` / `18100` | Host loopback port pool |
 | `INSTANCE_CPUS` / `INSTANCE_MEMORY` | `2` / `2g` | Per-instance limits |
 
@@ -165,8 +168,8 @@ Containers carry `--restart unless-stopped`, so running instances return on thei
 
 ## Security model
 
-- Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` when `COOKIE_DOMAIN` is set, 7-day expiry.
-- Passwords: bcrypt. OTP codes: SHA-256 hashed, 10-minute expiry, attempt-capped, constant-time compare.
+- Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` when `COOKIE_DOMAIN` is set; bearer tokens are SHA-256-digested in SQLite with server-enforced 7-day absolute and 24-hour idle expiry.
+- Passwords: bcrypt. OTP codes: salted SHA-256, 10-minute expiry, attempt-capped, constant-time compare; login/OTP/invite flows use persistent per-IP and per-account throttles.
 - Every subdomain request is authenticated (session) and authorized (owner or admin) **before** reaching a container; portal cookies and gateway identity headers are stripped before HTTP/WebSocket forwarding.
 - Portal mutations require the exact portal Origin and a per-session CSRF token; tenant sibling subdomains are treated as untrusted.
 - Instances are isolated: private home + workspace volumes, CPU/memory caps, dsh's own sandbox.

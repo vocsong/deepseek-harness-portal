@@ -11,14 +11,24 @@ function hashCode(code, salt) {
   return createHash('sha256').update(`${salt}:${code}`).digest('hex')
 }
 
-/** Issue a fresh code for (email, purpose), replacing any prior one. */
+/** Persist a delivered code, replacing the previous one only after mail
+ * delivery succeeds so a transport failure cannot destroy a usable OTP. */
+export function storeOtpCode(email, purpose, code) {
+  const salt = randomBytes(16).toString('hex')
+  const now = Date.now()
+  const replace = db.transaction(() => {
+    db.prepare('DELETE FROM otps WHERE email = ? AND purpose = ?').run(email, purpose)
+    db.prepare(
+      'INSERT INTO otps (email, purpose, code_hash, expires_at, attempts, created_at) VALUES (?,?,?,?,0,?)',
+    ).run(email, purpose, `${salt}:${hashCode(code, salt)}`, now + config.otpTtlMs, now)
+  })
+  replace()
+}
+
+/** Issue synchronously for tests/internal callers. Network routes send first. */
 export function issueOtp(email, purpose) {
   const code = generateOtpCode()
-  const salt = randomBytes(16).toString('hex')
-  db.prepare('DELETE FROM otps WHERE email = ? AND purpose = ?').run(email, purpose)
-  db.prepare(
-    'INSERT INTO otps (email, purpose, code_hash, expires_at, attempts, created_at) VALUES (?,?,?,?,0,?)',
-  ).run(email, purpose, `${salt}:${hashCode(code, salt)}`, Date.now() + config.otpTtlMs, Date.now())
+  storeOtpCode(email, purpose, code)
   return code
 }
 

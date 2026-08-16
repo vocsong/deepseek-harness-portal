@@ -247,7 +247,6 @@ $('#login-otp-form').addEventListener('submit', async (e) => {
     await boot()
   } catch (err) {
     $('#auth-msg').textContent = err.message
-    if (otpStep === 'verify') { otpStep = 'send'; $('#login-otp-submit').textContent = 'Send code' }
   }
 })
 
@@ -277,7 +276,6 @@ $('#register-form').addEventListener('submit', async (e) => {
     await boot()
   } catch (err) {
     $('#auth-msg').textContent = err.message
-    if (otpStep === 'verify') { otpStep = 'send'; $('#register-submit').textContent = 'Send code' }
   }
 })
 
@@ -302,13 +300,17 @@ async function openProfile() {
       const msg = $('#profile-msg')
       msg.textContent = ''
       try {
-        await api('/api/profile', { method: 'POST', body: {
+        const updated = await api('/api/profile', { method: 'POST', body: {
           name: fd.get('name'),
           username: fd.get('username') || undefined,
           email: fd.get('email'),
           newPassword: fd.get('newPassword') || undefined,
           currentPassword: fd.get('currentPassword') || undefined,
         }})
+        if (updated.csrfToken) {
+          csrfToken = updated.csrfToken
+          $$('.csrf-token').forEach((input) => { input.value = csrfToken })
+        }
         msg.textContent = 'Saved'
         msg.className = 'form-msg ok'
         setTimeout(() => { closeModal(); boot() }, 600)

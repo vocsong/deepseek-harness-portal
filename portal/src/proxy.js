@@ -9,6 +9,13 @@ import { SESSION_COOKIE } from './auth.js'
 // and the portal is the authenticated, authorized gateway into the instance —
 // so presenting proxied traffic as loopback is correct and required.
 const proxy = httpProxy.createProxyServer({ xfwd: false, changeOrigin: true })
+const activeWebSockets = new Set()
+
+export function closeUserSockets(userId) {
+  for (const tracked of activeWebSockets) {
+    if (tracked.userId === userId && !tracked.socket.destroyed) tracked.socket.destroy()
+  }
+}
 
 // The browser-to-portal hop carries gateway credentials and identity metadata.
 // None of those values belong on the portal-to-tenant hop. Removing Cookie is
@@ -149,7 +156,8 @@ export function setupProxy(fastify) {
       socket.destroy()
       return
     }
-    const user = userForSession(cookieToken(req.headers.cookie))
+    const sessionToken = cookieToken(req.headers.cookie)
+    const user = userForSession(sessionToken)
     if (!mayAccess(user, inst)) {
       socket.destroy()
       return
@@ -162,7 +170,19 @@ export function setupProxy(fastify) {
       socket.destroy()
       return
     }
+    // Container startup may take tens of seconds. Revalidate after the final
+    // await so a password reset/logout during startup cannot escape revocation.
+    const currentUser = userForSession(sessionToken)
+    if (!mayAccess(currentUser, inst)) {
+      socket.destroy()
+      return
+    }
     touchInstanceRequest(slug)
+    const tracked = { socket, userId: currentUser.id, token: sessionToken }
+    activeWebSockets.add(tracked)
+    const untrack = () => activeWebSockets.delete(tracked)
+    socket.once('close', untrack)
+    socket.once('error', untrack)
     proxy.ws(req, socket, head, { target: `ws://127.0.0.1:${inst.host_port}` })
   }
 
@@ -175,4 +195,13 @@ export function setupProxy(fastify) {
       if (!socket.destroyed) socket.destroy()
     })
   })
+
+  const sessionSweep = setInterval(() => {
+    for (const tracked of activeWebSockets) {
+      if (!userForSession(tracked.token, { touch: false }) && !tracked.socket.destroyed) {
+        tracked.socket.destroy()
+      }
+    }
+  }, 60 * 1000)
+  sessionSweep.unref?.()
 }

@@ -20,6 +20,9 @@ export INSTANCE_DOMAIN="${INSTANCE_DOMAIN:-example.com}"
 export INSTANCE_SLUG_SUFFIX="${INSTANCE_SLUG_SUFFIX:--deepseek}"
 export COOKIE_DOMAIN="${COOKIE_DOMAIN:-}"
 export PORT="${PORT:-8080}"
+export SESSION_ABSOLUTE_TTL_MS="${SESSION_ABSOLUTE_TTL_MS:-604800000}"
+export SESSION_IDLE_TTL_MS="${SESSION_IDLE_TTL_MS:-86400000}"
+export SESSION_TOUCH_INTERVAL_MS="${SESSION_TOUCH_INTERVAL_MS:-60000}"
 
 # Seeded admin (first boot only). Startup refuses to seed without an explicit
 # non-placeholder password of at least 16 characters.
@@ -36,6 +39,9 @@ export SMTP_USER="${SMTP_USER:-}"
 export SMTP_PASS="${SMTP_PASS:-}"
 export SMTP_FROM="${SMTP_FROM:-}"
 export OTP_DEV_MODE="${OTP_DEV_MODE:-}"
+export AUTH_RATE_WINDOW_MS="${AUTH_RATE_WINDOW_MS:-900000}"
+export AUTH_RATE_BLOCK_MS="${AUTH_RATE_BLOCK_MS:-900000}"
+export OTP_RESEND_COOLDOWN_MS="${OTP_RESEND_COOLDOWN_MS:-60000}"
 
 export INSTANCE_CPUS="${INSTANCE_CPUS:-2}"
 export INSTANCE_MEMORY="${INSTANCE_MEMORY:-2g}"
