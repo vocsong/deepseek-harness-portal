@@ -46,9 +46,18 @@ CREATE TABLE IF NOT EXISTS instances (
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  csrf_token TEXT
 );
 `)
+
+// Add a per-session CSRF secret without invalidating existing sessions. A later
+// security migration may replace plaintext bearer tokens entirely; for now the
+// CSRF backfill lets the portal and UI deploy atomically.
+const sessionColumns = new Set(db.pragma('table_info(sessions)').map((row) => row.name))
+if (!sessionColumns.has('csrf_token')) db.exec('ALTER TABLE sessions ADD COLUMN csrf_token TEXT')
+db.exec(`UPDATE sessions SET csrf_token = lower(hex(randomblob(32)))
+         WHERE csrf_token IS NULL OR length(csrf_token) != 64`)
 
 // ---- users ----
 
@@ -176,9 +185,9 @@ export function touchInstanceRequest(slug) {
 
 // ---- sessions ----
 
-export function insertSession(token, userId) {
-  db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)')
-    .run(token, userId, Date.now())
+export function insertSession(token, userId, csrfToken) {
+  db.prepare('INSERT INTO sessions (token, user_id, created_at, csrf_token) VALUES (?,?,?,?)')
+    .run(token, userId, Date.now(), csrfToken)
 }
 
 export function deleteSession(token) {
@@ -189,12 +198,19 @@ export function deleteAllSessionsForUser(userId) {
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
 }
 
-export function userForSession(token) {
+export function sessionForToken(token) {
   if (!token) return null
   const row = db.prepare(
-    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`,
+    `SELECT u.*, s.csrf_token AS _csrf_token
+     FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`,
   ).get(token)
-  return row ?? null
+  if (!row) return null
+  const { _csrf_token: csrfToken, ...user } = row
+  return { user, csrfToken }
+}
+
+export function userForSession(token) {
+  return sessionForToken(token)?.user ?? null
 }
 
 // ---- seed admin ----
@@ -202,11 +218,17 @@ export function userForSession(token) {
 export function ensureAdmin() {
   const existing = db.prepare("SELECT * FROM users WHERE role = 'admin' LIMIT 1").get()
   if (existing) return
+
+  const password = String(config.adminPassword ?? '')
+  const placeholder = /^(?:change-?me(?:-?now)?|password|admin|example)$/i.test(password)
+  if (!config.adminEmail || !config.adminName || password.length < 16 || placeholder) {
+    throw new Error('no admin exists: set ADMIN_EMAIL, ADMIN_NAME, and a non-placeholder ADMIN_PASSWORD of at least 16 characters')
+  }
   createUser({
     email: config.adminEmail,
     username: config.adminName.toLowerCase(),
     name: config.adminName,
-    passwordHash: hashPassword(config.adminPassword),
+    passwordHash: hashPassword(password),
     role: 'admin',
   })
   console.log(`[portal] seeded admin "${config.adminEmail}"`)

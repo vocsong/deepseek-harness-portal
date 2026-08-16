@@ -145,6 +145,9 @@ a:hover { text-decoration: underline; }
 .sidebar-brand .brand-mark { font-size: 20px; width: 34px; height: 34px; border-radius: 9px; }
 .nav { flex: 1; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
 .sidebar-foot { padding: 10px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 2px; }
+.logout-form { margin: 0; }
+.sidebar-foot .logout-form { width: 100%; }
+.mobile-nav .logout-form { flex: 0 0 auto; }
 .nav-item {
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 9px 11px; border: none; border-radius: 8px; background: transparent;

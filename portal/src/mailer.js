@@ -11,15 +11,14 @@ if (config.smtp.host) {
   })
 }
 
-/**
- * Deliver an OTP. In dev mode (no SMTP configured) the code is logged and
- * returned so the flow can be exercised without a mail server.
- */
+/** Deliver an OTP. Explicit localhost development mode may log the code,
+ * but authentication codes are never returned through the network API. */
 export async function sendOtpCode(email, code) {
-  if (config.otpDevMode || !transporter) {
+  if (config.otpDevMode) {
     console.log(`[otp] DEV MODE — verification code for ${email}: ${code}`)
-    return { devCode: code }
+    return {}
   }
+  if (!transporter) throw new Error('SMTP transport is not configured')
   await transporter.sendMail({
     from: config.smtp.from,
     to: email,

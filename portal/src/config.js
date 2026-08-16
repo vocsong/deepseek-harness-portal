@@ -9,15 +9,28 @@ function num(name, fallback) {
   return v === undefined || v === '' ? fallback : Number(v)
 }
 
-const smtpConfigured = Boolean(process.env.SMTP_HOST)
+const domain = process.env.DOMAIN ?? 'example.com'
+const portalOrigin = (() => {
+  const raw = process.env.PORTAL_ORIGIN ?? `https://${domain}`
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('unsupported scheme')
+    return url.origin
+  } catch {
+    throw new Error(`PORTAL_ORIGIN must be an absolute http(s) origin (received "${raw}")`)
+  }
+})()
 
 export const config = {
+  environment: process.env.NODE_ENV ?? 'production',
+
   // Portal listen address (cloudflared on this host connects here).
   port: num('PORT', 8080),
   host: process.env.HOST ?? '127.0.0.1',
 
   // Apex/portal domain (login + admin UI). Override in production.
-  domain: process.env.DOMAIN ?? 'example.com',
+  domain,
+  portalOrigin,
 
   // Base domain for per-instance subdomains: <slug>.<instanceDomain>.
   instanceDomain: process.env.INSTANCE_DOMAIN ?? 'example.com',
@@ -36,9 +49,9 @@ export const config = {
   portRangeEnd: num('PORT_RANGE_END', 18100),
 
   // Seeded admin account (created at first boot if absent).
-  adminEmail: process.env.ADMIN_EMAIL ?? 'admin@example.com',
-  adminName: process.env.ADMIN_NAME ?? 'admin',
-  adminPassword: process.env.ADMIN_PASSWORD ?? 'changeme',
+  adminEmail: process.env.ADMIN_EMAIL ?? '',
+  adminName: process.env.ADMIN_NAME ?? '',
+  adminPassword: process.env.ADMIN_PASSWORD ?? '',
 
   instanceStartTimeoutMs: num('INSTANCE_START_TIMEOUT_MS', 180000),
   instanceCpus: process.env.INSTANCE_CPUS ?? '2',
@@ -58,9 +71,30 @@ export const config = {
     pass: process.env.SMTP_PASS ?? '',
     from: process.env.SMTP_FROM ?? process.env.SMTP_USER ?? '',
   },
-  // When no SMTP host is configured (or OTP_DEV_MODE=true), OTP codes are
-  // logged to the console and returned in the API response for testing.
-  otpDevMode: process.env.OTP_DEV_MODE === 'true' || !smtpConfigured,
+  // Development OTP logging must be explicitly enabled. Production never
+  // infers dev mode from missing SMTP configuration.
+  otpDevMode: process.env.OTP_DEV_MODE === 'true',
   otpTtlMs: num('OTP_TTL_MS', 10 * 60 * 1000),
   otpMaxAttempts: num('OTP_MAX_ATTEMPTS', 5),
+}
+
+export function validateConfig() {
+  const localDomain = new Set(['localhost', '127.0.0.1', '[::1]']).has(config.domain.toLowerCase())
+  const loopbackBind = new Set(['127.0.0.1', '::1', 'localhost']).has(config.host.toLowerCase())
+  if (config.otpDevMode && (config.environment !== 'development' || !localDomain || !loopbackBind)) {
+    throw new Error('OTP_DEV_MODE=true is allowed only with NODE_ENV=development on a loopback-only localhost deployment')
+  }
+  if (!config.otpDevMode) {
+    if (!config.smtp.host || !config.smtp.from) {
+      throw new Error('SMTP_HOST and SMTP_FROM are required unless explicit localhost development OTP mode is enabled')
+    }
+    if (Boolean(config.smtp.user) !== Boolean(config.smtp.pass)) {
+      throw new Error('SMTP_USER and SMTP_PASS must either both be set or both be empty')
+    }
+  }
+  if (!Number.isInteger(config.smtp.port) || config.smtp.port < 1 || config.smtp.port > 65535) {
+    throw new Error('SMTP_PORT must be an integer from 1 to 65535')
+  }
+  if (!Number.isFinite(config.otpTtlMs) || config.otpTtlMs <= 0) throw new Error('OTP_TTL_MS must be positive')
+  if (!Number.isInteger(config.otpMaxAttempts) || config.otpMaxAttempts < 1) throw new Error('OTP_MAX_ATTEMPTS must be a positive integer')
 }

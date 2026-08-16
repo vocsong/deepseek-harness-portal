@@ -3,6 +3,7 @@ const $ = (sel) => document.querySelector(sel)
 const $$ = (sel) => [...document.querySelectorAll(sel)]
 
 let me = null
+let csrfToken = ''
 let authMode = 'login' // 'login' | 'register'
 let otpStep = 'send'   // 'send' | 'verify'
 let pendingEmail = ''
@@ -43,12 +44,18 @@ function hydrateIcons(root = document) {
 }
 
 async function api(path, opts = {}) {
-  const body = opts.body !== undefined ? JSON.stringify(opts.body) : undefined
+  const method = String(opts.method ?? 'GET').toUpperCase()
+  const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(method)
+  const body = opts.body !== undefined ? JSON.stringify(opts.body) : (unsafe ? '{}' : undefined)
+  const headers = { ...(opts.headers ?? {}) }
+  if (unsafe) headers['content-type'] = 'application/json'
+  if (unsafe && csrfToken) headers['x-csrf-token'] = csrfToken
+  const { body: _body, headers: _headers, ...rest } = opts
   const res = await fetch(path, {
-    ...(body !== undefined ? { headers: { 'content-type': 'application/json' } } : {}),
     credentials: 'same-origin',
     cache: 'no-store',
-    ...opts,
+    ...rest,
+    headers,
     body,
   })
   const data = await res.json().catch(() => ({}))
@@ -515,8 +522,10 @@ async function boot() {
   } catch { /* defaults */ }
 
   try {
-    const { user } = await api('/api/auth/me')
+    const { user, csrfToken: sessionCsrfToken } = await api('/api/auth/me')
     me = user
+    csrfToken = sessionCsrfToken
+    $$('.csrf-token').forEach((input) => { input.value = csrfToken })
     $('#whoami').textContent = user.username || user.email || user.name
     showApp()
     $('#admin-nav').classList.toggle('hidden', user.role !== 'admin')
@@ -532,6 +541,8 @@ async function boot() {
     }
   } catch {
     me = null
+    csrfToken = ''
+    $$('.csrf-token').forEach((input) => { input.value = '' })
     showAuth()
     resetAuth()
   }

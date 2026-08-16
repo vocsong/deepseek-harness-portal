@@ -13,19 +13,22 @@ fi
 
 cd portal
 
+export NODE_ENV="${NODE_ENV:-production}"
 export DOMAIN="${DOMAIN:-example.com}"
+export PORTAL_ORIGIN="${PORTAL_ORIGIN:-https://${DOMAIN}}"
 export INSTANCE_DOMAIN="${INSTANCE_DOMAIN:-example.com}"
 export INSTANCE_SLUG_SUFFIX="${INSTANCE_SLUG_SUFFIX:--deepseek}"
 export COOKIE_DOMAIN="${COOKIE_DOMAIN:-}"
 export PORT="${PORT:-8080}"
 
-# Seeded admin (first boot only).
-export ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
-export ADMIN_NAME="${ADMIN_NAME:-admin}"
-export ADMIN_PASSWORD="${ADMIN_PASSWORD:-changeme}"
+# Seeded admin (first boot only). Startup refuses to seed without an explicit
+# non-placeholder password of at least 16 characters.
+export ADMIN_EMAIL="${ADMIN_EMAIL:-}"
+export ADMIN_NAME="${ADMIN_NAME:-}"
+export ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 
-# Email / OTP. Leave SMTP_HOST unset (or set OTP_DEV_MODE=true) to log codes
-# to the console instead of sending email — useful until SMTP is configured.
+# Email / OTP. Production requires SMTP. Development OTP logging requires
+# NODE_ENV=development, DOMAIN=localhost, and explicit OTP_DEV_MODE=true.
 export SMTP_HOST="${SMTP_HOST:-}"
 export SMTP_PORT="${SMTP_PORT:-587}"
 export SMTP_SECURE="${SMTP_SECURE:-false}"

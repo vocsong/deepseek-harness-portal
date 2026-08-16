@@ -20,6 +20,16 @@ It is **not yet safe to treat tenant containers as an untrusted multi-tenant bou
 
 The report recommends immediate containment and a small atomic portal hotfix before further production use, followed by session/authentication hardening, image remediation, and stronger tenant isolation.
 
+## Remediation status (2026-08-16)
+
+The P0 portal/host containment pass has been deployed and verified:
+
+- **Resolved:** SEC-01 (fail-closed OTP production configuration), SEC-02 (HTTP/WS credential and response-cookie isolation), SEC-03 (exact-Origin + per-session CSRF), SEC-05 (safe admin bootstrap), SEC-06 (deny-by-default build context), SEC-10 (malformed WS containment), SEC-14 (browser headers), GET logout, and raw proxy error disclosure.
+- **Resolved operationally:** DEP-01 ACLs were restricted to the operator/Administrators/SYSTEM; the known test administrator was removed; all pre-fix sessions and OTPs were invalidated.
+- **Still open:** SEC-04, SEC-07 through SEC-09, SEC-11 through SEC-13, SEC-15, SEC-16, DEP-02, service-credential rotation at the external provider, and the longer-term P1–P3 work.
+
+Live regression checks covered the CSRF deny/allow matrix, native POST logout, session invalidation, privileged `settings.describe`, malformed WebSocket cookies, HTTP/WS credential stripping, successful/rejected WS response-cookie filtering, headers, SMTP/bootstrap failure modes, and portal health.
+
 ## Scope and method
 
 Reviewed:

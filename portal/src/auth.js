@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { deleteSession, insertSession } from './db.js'
 
 export function hashPassword(password) {
@@ -20,8 +20,14 @@ export function isValidEmail(email) {
 
 export function createSession(userId) {
   const token = randomBytes(32).toString('hex')
-  insertSession(token, userId)
-  return token
+  const csrfToken = randomBytes(32).toString('hex')
+  insertSession(token, userId, csrfToken)
+  return { token, csrfToken }
+}
+
+export function verifyCsrfToken(actual, expected) {
+  if (!/^[a-f0-9]{64}$/.test(String(actual ?? '')) || !/^[a-f0-9]{64}$/.test(String(expected ?? ''))) return false
+  return timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'))
 }
 
 export function destroySession(token) {

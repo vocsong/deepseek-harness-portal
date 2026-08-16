@@ -4,16 +4,19 @@ import fastifyStatic from '@fastify/static'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-import { config } from './config.js'
+import { config, validateConfig } from './config.js'
 import {
   createInstanceRow, createUser, deleteAllSessionsForUser, deleteInstance,
   deleteUser, ensureAdmin, getEmailDomains, getInstanceById, getInstanceByUserId,
   getInstanceBySlug, getInviteCode, getUserByEmail, getUserById,
   getUserByUsername, listInstancesWithUsers, listUsers, otpRegistrationEnabled,
   passwordLoginEnabled, setInviteCode, setSetting, setUserPassword,
-  updateInstance, updateUser, userForSession,
+  sessionForToken, updateInstance, updateUser, userForSession,
 } from './db.js'
-import { createSession, destroySession, hashPassword, isValidEmail, LEGACY_SESSION_COOKIES, normalizeEmail, verifyPassword, SESSION_COOKIE } from './auth.js'
+import {
+  createSession, destroySession, hashPassword, isValidEmail, LEGACY_SESSION_COOKIES,
+  normalizeEmail, verifyCsrfToken, verifyPassword, SESSION_COOKIE,
+} from './auth.js'
 import { issueOtp, verifyOtp } from './otp.js'
 import { sendOtpCode } from './mailer.js'
 import {
@@ -27,6 +30,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const fastify = Fastify({ logger: false })
 
 await fastify.register(cookie)
+fastify.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
+  try { done(null, Object.fromEntries(new URLSearchParams(body))) }
+  catch (err) { done(err) }
+})
 await fastify.register(fastifyStatic, {
   root: join(__dirname, '..', 'public'),
   prefix: '/',
@@ -35,6 +42,7 @@ await fastify.register(fastifyStatic, {
   },
 })
 
+validateConfig()
 ensureAdmin()
 setupProxy(fastify)
 
@@ -46,8 +54,17 @@ for (const inst of listInstancesWithUsers()) {
   }
 }
 
-// Never cache API responses (the session state must always be fresh).
+// Portal browser hardening. Instance responses are hijacked by setupProxy
+// before onSend and intentionally keep dsh's own content policy.
 fastify.addHook('onSend', async (req, reply) => {
+  reply.headers({
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  })
   if (req.raw.url?.startsWith('/api/')) reply.header('Cache-Control', 'no-store')
 })
 
@@ -66,13 +83,17 @@ function setSessionCookie(reply, token) {
   })
 }
 
-function requireUser(req, reply) {
-  const user = userForSession(req.cookies?.[SESSION_COOKIE])
-  if (!user) {
+function requireSession(req, reply) {
+  const session = sessionForToken(req.cookies?.[SESSION_COOKIE])
+  if (!session) {
     reply.code(401).send({ error: 'not authenticated' })
     return null
   }
-  return user
+  return session
+}
+
+function requireUser(req, reply) {
+  return requireSession(req, reply)?.user ?? null
 }
 
 function requireAdmin(req, reply) {
@@ -84,6 +105,45 @@ function requireAdmin(req, reply) {
   }
   return user
 }
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const PREAUTH_MUTATIONS = new Set([
+  '/api/auth/register/request', '/api/auth/register/verify',
+  '/api/auth/login', '/api/auth/login/request', '/api/auth/login/verify',
+])
+
+// Tenant subdomains are same-site with the portal, so SameSite cookies alone do
+// not stop CSRF. Require the exact configured portal origin for every API
+// mutation, JSON for API calls, and a per-session secret after authentication.
+fastify.addHook('preHandler', async (req, reply) => {
+  if (SAFE_METHODS.has(req.method) || !req.raw.url?.startsWith('/api/')) return
+
+  const path = req.raw.url.split('?')[0]
+  const host = String(req.headers.host ?? '').split(':')[0].toLowerCase()
+  if (host !== config.domain.toLowerCase()) {
+    return reply.code(403).send({ error: 'invalid request host' })
+  }
+  if (req.headers.origin !== config.portalOrigin) {
+    return reply.code(403).send({ error: 'invalid request origin' })
+  }
+  const fetchSite = req.headers['sec-fetch-site']
+  if (fetchSite !== undefined && fetchSite !== 'same-origin') {
+    return reply.code(403).send({ error: 'cross-site request rejected' })
+  }
+
+  const isLogout = path === '/api/auth/logout'
+  if (!isLogout && String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') {
+    return reply.code(415).send({ error: 'application/json required' })
+  }
+  if (PREAUTH_MUTATIONS.has(path)) return
+
+  const session = sessionForToken(req.cookies?.[SESSION_COOKIE])
+  if (!session) return // The route's normal authorization returns 401.
+  const presented = isLogout ? req.body?._csrf : req.headers['x-csrf-token']
+  if (!verifyCsrfToken(presented, session.csrfToken)) {
+    return reply.code(403).send({ error: 'invalid CSRF token' })
+  }
+})
 
 function slugify(value) {
   const s = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -130,8 +190,8 @@ fastify.post('/api/auth/register/request', async (req, reply) => {
   if (getUserByEmail(email)) return reply.code(409).send({ error: 'an account with this email already exists' })
 
   const code = issueOtp(email, 'register')
-  const sent = await sendOtpCode(email, code)
-  return { ok: true, ...(sent.devCode !== undefined ? { devCode: sent.devCode } : {}) }
+  await sendOtpCode(email, code)
+  return { ok: true }
 })
 
 fastify.post('/api/auth/register/verify', async (req, reply) => {
@@ -183,9 +243,9 @@ fastify.post('/api/auth/register/verify', async (req, reply) => {
     console.error('[register] instance provisioning setup failed:', err)
   }
 
-  const token = createSession(userId)
-  setSessionCookie(reply, token)
-  return { user: publicUser(getUserById(userId)), instance }
+  const session = createSession(userId)
+  setSessionCookie(reply, session.token)
+  return { user: publicUser(getUserById(userId)), instance, csrfToken: session.csrfToken }
 })
 
 // ---- auth: login (password OR OTP) ----------------------------------------
@@ -200,9 +260,9 @@ fastify.post('/api/auth/login', async (req, reply) => {
   if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
     return reply.code(401).send({ error: 'invalid username or password' })
   }
-  const token = createSession(user.id)
-  setSessionCookie(reply, token)
-  return { user: publicUser(user) }
+  const session = createSession(user.id)
+  setSessionCookie(reply, session.token)
+  return { user: publicUser(user), csrfToken: session.csrfToken }
 })
 
 fastify.post('/api/auth/login/request', async (req, reply) => {
@@ -210,8 +270,8 @@ fastify.post('/api/auth/login/request', async (req, reply) => {
   const user = getUserByEmail(email)
   if (!user) return reply.code(401).send({ error: 'no account found for this email' })
   const code = issueOtp(email, 'login')
-  const sent = await sendOtpCode(email, code)
-  return { ok: true, ...(sent.devCode !== undefined ? { devCode: sent.devCode } : {}) }
+  await sendOtpCode(email, code)
+  return { ok: true }
 })
 
 fastify.post('/api/auth/login/verify', async (req, reply) => {
@@ -221,9 +281,9 @@ fastify.post('/api/auth/login/verify', async (req, reply) => {
   if (!user) return reply.code(401).send({ error: 'no account found for this email' })
   const v = verifyOtp(email, 'login', otp)
   if (!v.ok) return reply.code(400).send({ error: v.error })
-  const token = createSession(user.id)
-  setSessionCookie(reply, token)
-  return { user: publicUser(user) }
+  const session = createSession(user.id)
+  setSessionCookie(reply, session.token)
+  return { user: publicUser(user), csrfToken: session.csrfToken }
 })
 
 function clearSessionAndCookies(req, reply) {
@@ -264,21 +324,17 @@ function clearSessionAndCookies(req, reply) {
   }
 }
 
-// GET logout: plain browser navigation — the most robust path (no JS/fetch).
-fastify.get('/api/auth/logout', async (req, reply) => {
-  clearSessionAndCookies(req, reply)
-  reply.redirect('/')
-})
-
+// Native POST navigation avoids fetch/cache logout issues while Origin + the
+// hidden per-session token prevent logout and sibling-subdomain CSRF.
 fastify.post('/api/auth/logout', async (req, reply) => {
   clearSessionAndCookies(req, reply)
-  return { ok: true }
+  return reply.code(303).redirect('/')
 })
 
 fastify.get('/api/auth/me', async (req, reply) => {
-  const user = requireUser(req, reply)
-  if (!user) return
-  return { user: publicUser(user) }
+  const session = requireSession(req, reply)
+  if (!session) return
+  return { user: publicUser(session.user), csrfToken: session.csrfToken }
 })
 
 // ---- profile ---------------------------------------------------------------

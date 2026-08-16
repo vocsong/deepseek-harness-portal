@@ -118,9 +118,12 @@
         <button class="nav-item" id="profile-btn">
           <span class="nav-icon" data-icon="user"></span> Profile
         </button>
-        <a class="nav-item" href="/api/auth/logout">
-          <span class="nav-icon" data-icon="logout"></span> Log out
-        </a>
+        <form class="logout-form" method="post" action="/api/auth/logout">
+          <input class="csrf-token" type="hidden" name="_csrf" />
+          <button class="nav-item" type="submit">
+            <span class="nav-icon" data-icon="logout"></span> Log out
+          </button>
+        </form>
       </div>
     </aside>
 
@@ -150,9 +153,12 @@
         <button class="nav-item" id="mobile-profile-btn">
           <span class="nav-icon" data-icon="user"></span> Profile
         </button>
-        <a class="nav-item" href="/api/auth/logout">
-          <span class="nav-icon" data-icon="logout"></span> Log out
-        </a>
+        <form class="logout-form" method="post" action="/api/auth/logout">
+          <input class="csrf-token" type="hidden" name="_csrf" />
+          <button class="nav-item" type="submit">
+            <span class="nav-icon" data-icon="logout"></span> Log out
+          </button>
+        </form>
       </nav>
 
       <main class="content">

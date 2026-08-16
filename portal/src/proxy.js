@@ -10,18 +10,45 @@ import { SESSION_COOKIE } from './auth.js'
 // so presenting proxied traffic as loopback is correct and required.
 const proxy = httpProxy.createProxyServer({ xfwd: false, changeOrigin: true })
 
-// Drop the browser's Origin on the outbound hop. dsh's trust fence rejects an
-// Origin that doesn't match the (now-rewritten) Host; with no Origin it allows.
-function stripOrigin(proxyReq) {
-  proxyReq.removeHeader('origin')
+// The browser-to-portal hop carries gateway credentials and identity metadata.
+// None of those values belong on the portal-to-tenant hop. Removing Cookie is
+// intentional: dsh does not use browser cookies, while forwarding the parent-
+// domain portal_session would expose a bearer token to the tenant container.
+const STRIPPED_REQUEST_HEADERS = [
+  'cookie', 'authorization', 'proxy-authorization', 'origin', 'x-csrf-token',
+  'cf-access-jwt-assertion', 'cf-connecting-ip', 'cf-ipcountry', 'cf-ray',
+  'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto',
+  'x-forwarded-user', 'x-forwarded-email',
+]
+
+function hardenProxyRequest(proxyReq) {
+  for (const name of STRIPPED_REQUEST_HEADERS) proxyReq.removeHeader(name)
 }
-proxy.on('proxyReq', stripOrigin)
-proxy.on('proxyReqWs', stripOrigin)
+
+function stripUpstreamCookies(headers) {
+  if (!headers) return
+  delete headers['set-cookie']
+  delete headers['set-cookie2']
+}
+
+proxy.on('proxyReq', hardenProxyRequest)
+proxy.on('proxyReqWs', (proxyReq) => {
+  hardenProxyRequest(proxyReq)
+  // http-proxy writes both successful 101 and rejected/non-upgrade handshake
+  // headers after these listeners. Registering here removes Set-Cookie before
+  // either response path reaches the browser.
+  proxyReq.once('upgrade', (proxyRes) => stripUpstreamCookies(proxyRes.headers))
+  proxyReq.once('response', (proxyRes) => stripUpstreamCookies(proxyRes.headers))
+})
+proxy.on('proxyRes', (proxyRes) => stripUpstreamCookies(proxyRes.headers))
 
 proxy.on('error', (err, _req, res) => {
+  console.error('[proxy] upstream error:', err?.message ?? err)
   if (res && typeof res.writeHead === 'function' && !res.headersSent) {
     res.writeHead(502, { 'content-type': 'text/plain' })
-    res.end(`upstream error: ${err.message}`)
+    res.end('upstream unavailable')
+  } else if (res && typeof res.destroy === 'function' && !res.destroyed) {
+    res.destroy()
   }
 })
 
@@ -32,7 +59,8 @@ function cookieToken(cookieHeader) {
     const eq = part.indexOf('=')
     if (eq === -1) continue
     const name = part.slice(0, eq).trim()
-    if (name === SESSION_COOKIE) return decodeURIComponent(part.slice(eq + 1).trim())
+    const value = part.slice(eq + 1).trim()
+    if (name === SESSION_COOKIE) return /^[a-f0-9]{64}$/.test(value) ? value : null
   }
   return null
 }
@@ -110,7 +138,7 @@ export function setupProxy(fastify) {
     proxy.web(req.raw, reply.raw, { target: `http://127.0.0.1:${inst.host_port}` })
   })
 
-  fastify.server.on('upgrade', async (req, socket, head) => {
+  async function handleUpgrade(req, socket, head) {
     const slug = slugFromHost(req.headers.host)
     if (slug === null) {
       socket.destroy()
@@ -136,5 +164,15 @@ export function setupProxy(fastify) {
     }
     touchInstanceRequest(slug)
     proxy.ws(req, socket, head, { target: `ws://127.0.0.1:${inst.host_port}` })
+  }
+
+  // EventEmitter does not await async listeners. Convert rejections into a
+  // closed socket so malformed input or Podman errors cannot become an
+  // unhandled rejection that terminates the portal process.
+  fastify.server.on('upgrade', (req, socket, head) => {
+    void handleUpgrade(req, socket, head).catch((err) => {
+      console.error('[proxy] websocket upgrade failed:', err?.message ?? err)
+      if (!socket.destroyed) socket.destroy()
+    })
   })
 }

@@ -26,7 +26,7 @@ The portal is the **only** authentication entry point. It owns registration, log
 - **Login**: username/password **or** "email me a code" (OTP fallback).
 - **Admin controls** (Settings tab): email-domain whitelist, invite code, toggle OTP registration, toggle password login.
 
-OTP delivery uses SMTP (nodemailer). With no `SMTP_HOST` configured (or `OTP_DEV_MODE=true`) the code is logged to the portal console for local testing.
+OTP delivery uses SMTP (nodemailer), which is required in production. Code logging is available only with the explicit localhost-only development combination `NODE_ENV=development`, `DOMAIN=localhost`, and `OTP_DEV_MODE=true`; OTP values are never returned by the API.
 
 ## Architecture
 
@@ -126,7 +126,7 @@ cloudflared tunnel --config ~/.cloudflared/<tunnel-name>.yml run <tunnel-name>
 ./run-portal.sh
 ```
 
-Seeds an admin account on first boot from `ADMIN_EMAIL` / `ADMIN_NAME` / `ADMIN_PASSWORD` (**change the password**).
+Seeds an admin account on first boot from `ADMIN_EMAIL` / `ADMIN_NAME` / `ADMIN_PASSWORD`. The password must be explicitly set, non-placeholder, and at least 16 characters; startup refuses an unsafe bootstrap.
 
 ## Configuration (environment variables)
 
@@ -134,13 +134,15 @@ See `.env.example`. The important ones:
 
 | Var | Default | Meaning |
 |---|---|---|
+| `NODE_ENV` | `production` | Use `development` only for localhost testing |
 | `DOMAIN` | `example.com` | Portal apex domain |
+| `PORTAL_ORIGIN` | `https://<DOMAIN>` | Exact trusted browser origin for mutation/CSRF checks |
 | `INSTANCE_DOMAIN` | `example.com` | Base for `<slug>.<instanceDomain>` |
 | `INSTANCE_SLUG_SUFFIX` | `-deepseek` | Appended to the slug |
 | `COOKIE_DOMAIN` | *(empty)* | Session cookie domain (must cover apex + instances) |
 | `PORT` | `8080` | Portal listen port (cloudflared connects here) |
-| `ADMIN_EMAIL` / `ADMIN_NAME` / `ADMIN_PASSWORD` | placeholders | Seeded admin |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | *(empty)* | Email delivery for OTP (empty = dev mode, codes logged to console) |
+| `ADMIN_EMAIL` / `ADMIN_NAME` / `ADMIN_PASSWORD` | *(empty)* | First-boot admin; password must be explicit and at least 16 characters |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | *(empty)* | Production OTP delivery; host/from required, auth values paired |
 | `PORT_RANGE_START` / `END` | `18000` / `18100` | Host loopback port pool |
 | `INSTANCE_CPUS` / `INSTANCE_MEMORY` | `2` / `2g` | Per-instance limits |
 
@@ -165,7 +167,8 @@ Containers carry `--restart unless-stopped`, so running instances return on thei
 
 - Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` when `COOKIE_DOMAIN` is set, 7-day expiry.
 - Passwords: bcrypt. OTP codes: SHA-256 hashed, 10-minute expiry, attempt-capped, constant-time compare.
-- Every subdomain request is authenticated (session) and authorized (owner or admin) **before** reaching a container; containers listen on host loopback only.
+- Every subdomain request is authenticated (session) and authorized (owner or admin) **before** reaching a container; portal cookies and gateway identity headers are stripped before HTTP/WebSocket forwarding.
+- Portal mutations require the exact portal Origin and a per-session CSRF token; tenant sibling subdomains are treated as untrusted.
 - Instances are isolated: private home + workspace volumes, CPU/memory caps, dsh's own sandbox.
 - The portal is the sole auth layer (no Cloudflare Access).
 
