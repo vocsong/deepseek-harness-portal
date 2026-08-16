@@ -1,0 +1,25 @@
+# Tenant container egress firewall.
+#
+# Applied on the active Podman machine (rootless `pasta` runs as uid 1000).
+# Blocks container-originated traffic to RFC1918 private ranges while keeping
+# the WSL2 NAT gateway and DNS resolver reachable so tenants can still reach
+# public internet destinations (model-provider APIs, etc.).
+#
+# Link-local (169.254.0.0/16) is left untouched: it carries pasta's own DNS
+# forwarder and host.containers.internal, and pasta already refuses host
+# loopback services.
+
+table inet tenant-egress {
+    chain output {
+        type filter hook output priority 0; policy accept;
+
+        # WSL2 infrastructure required for egress and DNS.
+        ip daddr 172.20.160.0/20 accept comment "WSL2 NAT subnet (egress gateway)"
+        ip daddr 10.255.255.254 accept comment "WSL2 DNS resolver"
+
+        # Private (RFC1918) destinations — tenants must not reach these.
+        ip daddr 192.168.0.0/16 drop comment "private 192.168/16 (LAN)"
+        ip daddr 10.0.0.0/8 drop comment "private 10/8"
+        ip daddr 172.16.0.0/12 drop comment "private 172.16/12"
+    }
+}

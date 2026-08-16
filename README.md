@@ -194,6 +194,7 @@ Containers carry `--restart unless-stopped`; platform behavior after a WSL machi
 - Every subdomain request is authenticated (session) and authorized (owner or admin) **before** reaching a container; portal cookies and gateway identity headers are stripped before HTTP/WebSocket forwarding.
 - Portal mutations require the exact portal Origin and a per-session CSRF token; tenant sibling subdomains are treated as untrusted.
 - Instances are isolated: private home + workspace volumes, CPU/memory caps, dsh's own sandbox.
+- **Tenant egress firewall**: containers cannot reach RFC1918 private ranges (your LAN, `10/8`, `172.16/12`); only public internet egress is allowed. Enforced by nftables on the Podman machine (`firewall/tenant-egress.nft`), applied automatically by `run-portal.sh`.
 - The portal is the sole auth layer (no Cloudflare Access).
 
 ## Files
@@ -204,9 +205,10 @@ deepseek-portal/
     src/             backend modules (auth, db, otp, mailer, proxy, orchestrator, email-change)
     test/            transactional regression suite (npm test)
   image/             Dockerfile + start.sh + dsh-security.patch (dsh image)
+  firewall/          tenant egress firewall (nftables) + apply.sh
   dsh/               fresh upstream clone (build context, gitignored)
   build-image.sh
-  run-portal.sh
+  run-portal.sh      applies the egress firewall, then starts the portal
   .env.example
   README.md
   SECURITY_AUDIT.md  full audit, findings, and remediation status

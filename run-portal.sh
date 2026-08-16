@@ -11,6 +11,10 @@ if [ -f .env ]; then
   set +a
 fi
 
+# Apply the tenant egress firewall (idempotent) before starting the portal.
+# Fails closed if the Podman machine is not running.
+bash firewall/apply.sh
+
 cd portal
 
 export NODE_ENV="${NODE_ENV:-production}"
