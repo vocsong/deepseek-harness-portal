@@ -7,115 +7,200 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <header id="topbar" class="hidden">
-    <span id="brand">DeepSeek Harness Portal</span>
-    <span id="whoami"></span>
-    <button id="profile-btn" class="btn">Profile</button>
-    <a id="logout" class="btn" href="/api/auth/logout">Log out</a>
-  </header>
+  <!-- toast notifications -->
+  <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <main>
-    <!-- auth -->
-    <section id="auth-view" class="card hidden">
-      <div class="tabs">
-        <button id="tab-login" class="btn">Log in</button>
-        <button id="tab-register" class="btn">Register</button>
+  <!-- generic modal root -->
+  <div id="modal-root" class="modal-root hidden"></div>
+
+  <!-- ===================== AUTH ===================== -->
+  <div id="auth-view" class="auth-wrap hidden">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="brand-mark">◈</span>
+        <div>
+          <div class="brand-name">DeepSeek Harness</div>
+          <div class="brand-sub">Portal</div>
+        </div>
+      </div>
+
+      <div class="segmented" role="tablist">
+        <button id="tab-login" class="seg" role="tab">Log in</button>
+        <button id="tab-register" class="seg" role="tab">Register</button>
       </div>
 
       <!-- password login -->
-      <form id="login-form" class="auth-form">
-        <h2>Log in</h2>
-        <label>Username or email<input name="username" autocomplete="username" required /></label>
-        <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
-        <button class="btn primary" type="submit">Log in</button>
+      <form id="login-form" class="form" novalidate>
+        <div class="field">
+          <label for="login-username">Username or email</label>
+          <input id="login-username" name="username" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Log in</button>
         <button type="button" id="login-via-otp" class="link">Email me a code instead</button>
       </form>
 
       <!-- OTP login -->
-      <form id="login-otp-form" class="auth-form hidden">
-        <h2>Log in with email</h2>
-        <label>Email<input name="email" type="email" autocomplete="email" required /></label>
-        <div class="otp-row hidden" id="login-otp-code-row">
-          <label>6-digit code<input name="otp" inputmode="numeric" maxlength="6" /></label>
+      <form id="login-otp-form" class="form hidden" novalidate>
+        <div class="field">
+          <label for="login-otp-email">Email</label>
+          <input id="login-otp-email" name="email" type="email" autocomplete="email" required />
         </div>
-        <button class="btn primary" type="submit" id="login-otp-submit">Send code</button>
+        <div class="field hidden" id="login-otp-code-row">
+          <label for="login-otp-code">6-digit code</label>
+          <input id="login-otp-code" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" id="login-otp-submit">Send code</button>
+        <button type="button" id="login-otp-back" class="link">Back to password login</button>
       </form>
 
       <!-- registration -->
-      <form id="register-form" class="auth-form hidden">
-        <h2>Register</h2>
-        <label>Email<input name="email" type="email" autocomplete="email" required /></label>
-        <label>Name (optional)<input name="name" autocomplete="name" /></label>
-        <div class="hidden" id="register-invite-row">
-          <label>Invitation code<input name="inviteCode" autocomplete="off" /></label>
+      <form id="register-form" class="form hidden" novalidate>
+        <div class="field">
+          <label for="reg-email">Email</label>
+          <input id="reg-email" name="email" type="email" autocomplete="email" required />
         </div>
-        <div class="otp-row hidden" id="register-otp-row">
-          <label>6-digit code<input name="otp" inputmode="numeric" maxlength="6" /></label>
+        <div class="field">
+          <label for="reg-name">Name <span class="opt">(optional — used for your subdomain)</span></label>
+          <input id="reg-name" name="name" autocomplete="name" />
         </div>
-        <button class="btn primary" type="submit" id="register-submit">Send code</button>
+        <div class="field hidden" id="register-invite-row">
+          <label for="reg-invite">Invitation code</label>
+          <input id="reg-invite" name="inviteCode" autocomplete="off" />
+        </div>
+        <div class="field hidden" id="register-otp-row">
+          <label for="reg-otp">6-digit code</label>
+          <input id="reg-otp" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" id="register-submit">Send code</button>
       </form>
-      <p id="auth-msg" class="msg"></p>
-    </section>
 
-    <!-- user dashboard -->
-    <section id="user-view" class="hidden">
-      <h2>Your instance</h2>
-      <div id="instance-card" class="card">
-        <p id="instance-empty">No instance provisioned yet.</p>
-        <div id="instance-body" class="hidden">
-          <div class="row"><span class="k">Name</span><span id="i-slug" class="v"></span></div>
-          <div class="row"><span class="k">Status</span><span id="i-status" class="v"></span></div>
-          <div class="row"><span class="k">URL</span><a id="i-url" class="v" target="_blank" rel="noopener"></a></div>
-          <div class="row"><span class="k">Requests</span><span id="i-requests" class="v"></span></div>
-          <div class="row"><span class="k">Last active</span><span id="i-active" class="v"></span></div>
-          <div class="actions">
-            <a id="i-launch" class="btn primary" target="_blank" rel="noopener">Launch</a>
+      <p id="auth-msg" class="form-msg" role="alert"></p>
+    </div>
+  </div>
+
+  <!-- ===================== APP ===================== -->
+  <div id="app-view" class="app hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-mark">◈</span>
+        <span class="brand-name">Portal</span>
+      </div>
+      <nav class="nav" id="admin-nav">
+        <button class="nav-item" data-tab="instances">
+          <span class="nav-icon" data-icon="server"></span> Instances
+        </button>
+        <button class="nav-item" data-tab="users">
+          <span class="nav-icon" data-icon="users"></span> Users
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <span class="nav-icon" data-icon="sliders"></span> Settings
+        </button>
+      </nav>
+      <div class="sidebar-foot">
+        <button class="nav-item" id="profile-btn">
+          <span class="nav-icon" data-icon="user"></span> Profile
+        </button>
+        <a class="nav-item" href="/api/auth/logout">
+          <span class="nav-icon" data-icon="logout"></span> Log out
+        </a>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <h1 id="topbar-title">Overview</h1>
+        <div class="topbar-right">
+          <button class="btn btn-ghost" id="refresh-btn" title="Refresh">
+            <span class="nav-icon" data-icon="refresh"></span>
+          </button>
+          <span id="whoami" class="whoami"></span>
+        </div>
+      </header>
+
+      <main class="content">
+        <!-- user view -->
+        <section id="user-view" class="hidden">
+          <div id="instance-card" class="panel">
+            <p id="instance-empty" class="empty">No instance provisioned yet.</p>
+            <div id="instance-body" class="hidden">
+              <div class="instance-head">
+                <div>
+                  <div class="instance-name" id="i-slug">—</div>
+                  <div class="instance-url-row">
+                    <a id="i-url" class="instance-url" target="_blank" rel="noopener"></a>
+                    <button class="btn btn-ghost btn-sm" id="i-copy" title="Copy URL"><span class="nav-icon" data-icon="copy"></span></button>
+                  </div>
+                </div>
+                <div id="i-status" class="instance-status"></div>
+              </div>
+              <div class="kv-grid">
+                <div class="kv"><span class="k">Requests</span><span class="v" id="i-requests">0</span></div>
+                <div class="kv"><span class="k">Last active</span><span class="v" id="i-active">—</span></div>
+              </div>
+              <p id="i-error" class="form-msg err"></p>
+              <div class="actions">
+                <a id="i-launch" class="btn btn-primary" target="_blank" rel="noopener">
+                  <span class="nav-icon" data-icon="play"></span> Launch
+                </a>
+              </div>
+              <p class="hint">Your DeepSeek API key is set inside your instance (Settings → Models) and lives in that instance only. Idle instances pause automatically and wake on launch.</p>
+            </div>
           </div>
-          <p id="i-error" class="msg err"></p>
-        </div>
-      </div>
-      <p class="hint">Your API key is set inside your instance (Settings → Models) and lives in that instance only.</p>
-    </section>
+        </section>
 
-    <!-- profile -->
-    <section id="profile-view" class="card hidden">
-      <h2>Profile</h2>
-      <form id="profile-form">
-        <label>Name<input name="name" autocomplete="name" /></label>
-        <label>Username (used to log in)<input name="username" autocomplete="username" /></label>
-        <label>Email<input name="email" type="email" autocomplete="email" /></label>
-        <label>New password (leave blank to keep)<input name="newPassword" type="password" autocomplete="new-password" /></label>
-        <label>Current password (required to change password)<input name="currentPassword" type="password" autocomplete="current-password" /></label>
-        <button class="btn primary" type="submit">Save</button>
-      </form>
-      <p id="profile-msg" class="msg"></p>
-      <button id="profile-back" class="btn">Back</button>
-    </section>
+        <!-- admin view -->
+        <section id="admin-view" class="hidden">
+          <div class="stat-grid" id="admin-stats"></div>
 
-    <!-- admin dashboard -->
-    <section id="admin-view" class="hidden">
-      <h2>Admin</h2>
-      <div id="stats" class="card"></div>
-      <div class="tabs">
-        <button id="tab-instances" class="btn">Instances</button>
-        <button id="tab-users" class="btn">Users</button>
-        <button id="tab-settings" class="btn">Settings</button>
-      </div>
-      <div id="instances-table" class="card"></div>
-      <div id="users-table" class="card hidden"></div>
-      <div id="settings-panel" class="card hidden">
-        <h3>Registration &amp; auth</h3>
-        <form id="settings-form">
-          <label>Allowed email domains (comma-separated; empty = allow all)<input name="emailDomains" placeholder="company.com, gmail.com" /></label>
-          <label>Invitation code (optional; empty = open registration)<input name="inviteCode" autocomplete="off" placeholder="leave blank to disable" /></label>
-          <label class="check"><input type="checkbox" name="otpRegistrationEnabled" /> Allow new registrations (email OTP)</label>
-          <label class="check"><input type="checkbox" name="passwordLoginEnabled" /> Allow password login</label>
-          <button class="btn primary" type="submit">Save settings</button>
-        </form>
-        <p id="settings-msg" class="msg"></p>
-      </div>
-    </section>
-  </main>
+          <div class="panel" id="panel-instances">
+            <div class="panel-head">
+              <h2>Instances</h2>
+              <div class="panel-tools">
+                <input id="search-instances" class="input input-search" type="search" placeholder="Search…" />
+              </div>
+            </div>
+            <div id="instances-table"></div>
+          </div>
+
+          <div class="panel hidden" id="panel-users">
+            <div class="panel-head">
+              <h2>Users</h2>
+              <div class="panel-tools">
+                <input id="search-users" class="input input-search" type="search" placeholder="Search…" />
+              </div>
+            </div>
+            <div id="users-table"></div>
+          </div>
+
+          <div class="panel hidden" id="panel-settings">
+            <h2>Settings</h2>
+            <form id="settings-form" class="form form-narrow">
+              <div class="field">
+                <label for="set-domains">Allowed email domains <span class="opt">(comma-separated; empty = allow all)</span></label>
+                <input id="set-domains" name="emailDomains" placeholder="company.com, gmail.com" />
+              </div>
+              <div class="field">
+                <label for="set-invite">Invitation code <span class="opt">(optional; empty = open registration)</span></label>
+                <div class="input-row">
+                  <input id="set-invite" name="inviteCode" autocomplete="off" placeholder="leave blank to disable" />
+                  <button type="button" class="btn btn-ghost" id="gen-invite" title="Generate">Generate</button>
+                  <button type="button" class="btn btn-ghost" id="copy-invite" title="Copy"><span class="nav-icon" data-icon="copy"></span></button>
+                </div>
+              </div>
+              <label class="check"><input type="checkbox" name="otpRegistrationEnabled" /> Allow new registrations (email OTP)</label>
+              <label class="check"><input type="checkbox" name="passwordLoginEnabled" /> Allow password login</label>
+              <button class="btn btn-primary" type="submit">Save settings</button>
+            </form>
+            <p id="settings-msg" class="form-msg"></p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>
