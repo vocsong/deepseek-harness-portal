@@ -74,7 +74,7 @@ async function createContainerUnlocked({ slug, hostPort }) {
     '--network', config.instanceNetwork,
     '--log-driver', 'k8s-file', '--log-opt', `max-size=${config.instanceLogSize}`,
     '-p', `127.0.0.1:${hostPort}:3000`,
-    '-v', `${name}-home:/home/dsh/.dsh`,
+    '-v', `${name}-home:/home/dsh`,
     '-v', `${name}-workspace:/workspace`,
     '--tmpfs', `/tmp:rw,nosuid,nodev,size=${config.instanceTmpfsSize}`,
     '-e', 'DSH_HOME=/home/dsh/.dsh',

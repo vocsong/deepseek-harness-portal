@@ -43,7 +43,7 @@ OTP delivery uses SMTP (nodemailer), which is required in production. Code loggi
 Each user gets exactly one instance (`1 user : 1 instance`):
 
 - **Container** `dsh-<slug>`, CPU/memory/swap/PID limits, read-only root + bounded tmpfs/logs, no capabilities, no-new-privileges, explicit isolated `pasta` networking, `--restart unless-stopped`
-- **Two volumes**: `<name>-home` (mounted at `$DSH_HOME` — sessions, settings, credentials) and `<name>-workspace` (mounted at `/workspace` — the agent's persistent cwd)
+- **Two volumes**: `<name>-home` (mounted at `/home/dsh` — the user's writable home, including `$DSH_HOME=/home/dsh/.dsh` for sessions, settings, and credentials) and `<name>-workspace` (mounted at `/workspace` — the agent's persistent cwd)
 - **Published** on `127.0.0.1:<port>` (never exposed beyond the host); the portal proxies to it
 - The proxy presents traffic to the instance **as loopback** (`changeOrigin` rewrites `Host` to `127.0.0.1:<port>` and the browser's `Origin` is dropped) so dsh's loopback-only settings/credentials methods work; `TRUSTED_HOST=<slug>.<instanceDomain>` is still passed as a fallback
 - The user's DeepSeek API key is entered inside their instance (Settings → Models) and lives only in that instance's home volume
