@@ -1,0 +1,6 @@
+dsh/.git
+dsh/node_modules
+**/node_modules
+portal/data
+clone.log
+podman-build.log

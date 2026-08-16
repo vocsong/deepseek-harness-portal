@@ -1,0 +1,6 @@
+dsh/
+portal/node_modules/
+portal/data/
+*.log
+.env
+node_modules/

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DeepSeek Harness Portal</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header id="topbar" class="hidden">
+    <span id="brand">DeepSeek Harness Portal</span>
+    <span id="whoami"></span>
+    <button id="profile-btn" class="btn">Profile</button>
+    <button id="logout" class="btn">Log out</button>
+  </header>
+
+  <main>
+    <!-- auth -->
+    <section id="auth-view" class="card hidden">
+      <div class="tabs">
+        <button id="tab-login" class="btn">Log in</button>
+        <button id="tab-register" class="btn">Register</button>
+      </div>
+
+      <!-- password login -->
+      <form id="login-form" class="auth-form">
+        <h2>Log in</h2>
+        <label>Username or email<input name="username" autocomplete="username" required /></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
+        <button class="btn primary" type="submit">Log in</button>
+        <button type="button" id="login-via-otp" class="link">Email me a code instead</button>
+      </form>
+
+      <!-- OTP login -->
+      <form id="login-otp-form" class="auth-form hidden">
+        <h2>Log in with email</h2>
+        <label>Email<input name="email" type="email" autocomplete="email" required /></label>
+        <div class="otp-row hidden" id="login-otp-code-row">
+          <label>6-digit code<input name="otp" inputmode="numeric" maxlength="6" /></label>
+        </div>
+        <button class="btn primary" type="submit" id="login-otp-submit">Send code</button>
+      </form>
+
+      <!-- registration -->
+      <form id="register-form" class="auth-form hidden">
+        <h2>Register</h2>
+        <label>Email<input name="email" type="email" autocomplete="email" required /></label>
+        <label>Name (optional)<input name="name" autocomplete="name" /></label>
+        <div class="otp-row hidden" id="register-otp-row">
+          <label>6-digit code<input name="otp" inputmode="numeric" maxlength="6" /></label>
+        </div>
+        <button class="btn primary" type="submit" id="register-submit">Send code</button>
+      </form>
+      <p id="auth-msg" class="msg"></p>
+    </section>
+
+    <!-- user dashboard -->
+    <section id="user-view" class="hidden">
+      <h2>Your instance</h2>
+      <div id="instance-card" class="card">
+        <p id="instance-empty">No instance provisioned yet.</p>
+        <div id="instance-body" class="hidden">
+          <div class="row"><span class="k">Name</span><span id="i-slug" class="v"></span></div>
+          <div class="row"><span class="k">Status</span><span id="i-status" class="v"></span></div>
+          <div class="row"><span class="k">URL</span><a id="i-url" class="v" target="_blank" rel="noopener"></a></div>
+          <div class="row"><span class="k">Requests</span><span id="i-requests" class="v"></span></div>
+          <div class="row"><span class="k">Last active</span><span id="i-active" class="v"></span></div>
+          <div class="actions">
+            <a id="i-launch" class="btn primary" target="_blank" rel="noopener">Launch</a>
+            <button id="i-start" class="btn">Start</button>
+            <button id="i-stop" class="btn">Stop</button>
+          </div>
+          <p id="i-error" class="msg err"></p>
+        </div>
+      </div>
+      <p class="hint">Your API key is set inside your instance (Settings → Models) and lives in that instance only.</p>
+    </section>
+
+    <!-- profile -->
+    <section id="profile-view" class="card hidden">
+      <h2>Profile</h2>
+      <form id="profile-form">
+        <label>Name<input name="name" autocomplete="name" /></label>
+        <label>Username (used to log in)<input name="username" autocomplete="username" /></label>
+        <label>Email<input name="email" type="email" autocomplete="email" /></label>
+        <label>New password (leave blank to keep)<input name="newPassword" type="password" autocomplete="new-password" /></label>
+        <label>Current password (required to change password)<input name="currentPassword" type="password" autocomplete="current-password" /></label>
+        <button class="btn primary" type="submit">Save</button>
+      </form>
+      <p id="profile-msg" class="msg"></p>
+      <button id="profile-back" class="btn">Back</button>
+    </section>
+
+    <!-- admin dashboard -->
+    <section id="admin-view" class="hidden">
+      <h2>Admin</h2>
+      <div id="stats" class="card"></div>
+      <div class="tabs">
+        <button id="tab-instances" class="btn">Instances</button>
+        <button id="tab-users" class="btn">Users</button>
+        <button id="tab-settings" class="btn">Settings</button>
+      </div>
+      <div id="instances-table" class="card"></div>
+      <div id="users-table" class="card hidden"></div>
+      <div id="settings-panel" class="card hidden">
+        <h3>Registration &amp; auth</h3>
+        <form id="settings-form">
+          <label>Allowed email domains (comma-separated; empty = allow all)<input name="emailDomains" placeholder="company.com, gmail.com" /></label>
+          <label class="check"><input type="checkbox" name="otpRegistrationEnabled" /> Allow new registrations (email OTP)</label>
+          <label class="check"><input type="checkbox" name="passwordLoginEnabled" /> Allow password login</label>
+          <button class="btn primary" type="submit">Save settings</button>
+        </form>
+        <p id="settings-msg" class="msg"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
