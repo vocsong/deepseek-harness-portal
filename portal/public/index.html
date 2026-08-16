@@ -37,7 +37,10 @@
         </div>
         <div class="field">
           <label for="login-password">Password</label>
-          <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+          <div class="pw-row">
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+            <button type="button" class="pw-toggle" data-pw="login-password" title="Show password"><span class="nav-icon" data-icon="eye"></span></button>
+          </div>
         </div>
         <button class="btn btn-primary btn-block" type="submit">Log in</button>
         <button type="button" id="login-via-otp" class="link">Email me a code instead</button>
@@ -120,6 +123,26 @@
           <span id="whoami" class="whoami"></span>
         </div>
       </header>
+
+      <nav id="mobile-nav" class="mobile-nav">
+        <div class="mobile-admin-nav" id="mobile-admin-nav">
+          <button class="nav-item" data-tab="instances">
+            <span class="nav-icon" data-icon="server"></span> Instances
+          </button>
+          <button class="nav-item" data-tab="users">
+            <span class="nav-icon" data-icon="users"></span> Users
+          </button>
+          <button class="nav-item" data-tab="settings">
+            <span class="nav-icon" data-icon="sliders"></span> Settings
+          </button>
+        </div>
+        <button class="nav-item" id="mobile-profile-btn">
+          <span class="nav-icon" data-icon="user"></span> Profile
+        </button>
+        <a class="nav-item" href="/api/auth/logout">
+          <span class="nav-icon" data-icon="logout"></span> Log out
+        </a>
+      </nav>
 
       <main class="content">
         <!-- user view -->

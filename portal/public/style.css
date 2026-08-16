@@ -79,18 +79,18 @@ a:hover { text-decoration: underline; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
 .opt { font-weight: 400; color: var(--text-faint); }
-.input, select {
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
   width: 100%; padding: 9px 12px; border-radius: var(--radius-sm);
   border: 1px solid var(--line); background: var(--bg-elev); color: var(--text);
   font: 14px var(--font); transition: border-color .12s, box-shadow .12s;
 }
-.input:focus, select:focus {
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.input::placeholder { color: var(--text-faint); }
+:where(input, textarea)::placeholder { color: var(--text-faint); }
 .input-search { padding-left: 32px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7385' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: 11px center; }
 .input-row { display: flex; gap: 8px; }
-.input-row .input { flex: 1; }
+.input-row input { flex: 1; }
 
 .check { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text-dim); cursor: pointer; }
 .check input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; cursor: pointer; }
@@ -166,6 +166,8 @@ a:hover { text-decoration: underline; }
 .topbar-right { display: flex; align-items: center; gap: 14px; }
 .whoami { color: var(--text-dim); font-size: 13px; }
 .content { padding: 26px; max-width: 1200px; width: 100%; }
+
+.mobile-nav { display: none; }
 
 /* ---- panels & cards ---- */
 .panel {
@@ -274,6 +276,23 @@ tbody tr:last-child td { border-bottom: none; }
 
 @media (max-width: 720px) {
   .sidebar { display: none; }
+  .mobile-nav {
+    display: flex; gap: 6px; overflow-x: auto;
+    padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--bg);
+  }
+  .mobile-admin-nav { display: flex; gap: 6px; }
+  .mobile-nav .nav-item { width: auto; flex: 0 0 auto; }
   .content { padding: 16px; }
   .topbar { padding: 12px 16px; }
 }
+
+/* ---- password toggle ---- */
+.pw-row { position: relative; }
+.pw-row input { padding-right: 42px; }
+.pw-toggle {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; color: var(--text-faint); cursor: pointer;
+  padding: 6px; border-radius: 6px; display: inline-grid; place-items: center;
+}
+.pw-toggle:hover { color: var(--text); background: var(--surface-2); }
+.pw-toggle .icon { width: 16px; height: 16px; }

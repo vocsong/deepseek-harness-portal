@@ -28,6 +28,8 @@ const ICONS = {
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
   key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  'eye-off': '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
 }
 
 function icon(name, size = 16) {
@@ -97,6 +99,18 @@ function closeModal() {
 }
 function escHandler(e) { if (e.key === 'Escape') closeModal() }
 
+// delegated password visibility toggle (works for static + modal fields)
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.pw-toggle')
+  if (!btn) return
+  const input = btn.closest('.pw-row')?.querySelector('input')
+  if (!input) return
+  const show = input.type === 'password'
+  input.type = show ? 'text' : 'password'
+  btn.querySelector('.nav-icon').innerHTML = icon(show ? 'eye-off' : 'eye')
+  btn.title = show ? 'Hide password' : 'Show password'
+})
+
 function confirmModal(title, message, actionLabel = 'Delete', danger = true) {
   return new Promise((resolve) => {
     openModal({
@@ -127,6 +141,13 @@ function relTime(ms) {
   return `${Math.floor(h / 24)}d ago`
 }
 function fmtDate(ms) { return ms ? new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—' }
+function fmtNum(n) {
+  if (n == null) return '0'
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B'
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k'
+  return String(n)
+}
 function instanceUrl(slug) { return `https://${slug}.${cfg.instanceDomain}` }
 
 // ---- views ----
@@ -134,7 +155,7 @@ function showApp() { $('#auth-view').classList.add('hidden'); $('#app-view').cla
 function showAuth() { $('#app-view').classList.add('hidden'); $('#auth-view').classList.remove('hidden') }
 
 function setAdminTab(tab) {
-  $$('#admin-nav .nav-item').forEach((n) => n.classList.toggle('active', n.dataset.tab === tab))
+  $$('#admin-nav .nav-item, #mobile-admin-nav .nav-item').forEach((n) => n.classList.toggle('active', n.dataset.tab === tab))
   $('#panel-instances').classList.toggle('hidden', tab !== 'instances')
   $('#panel-users').classList.toggle('hidden', tab !== 'users')
   $('#panel-settings').classList.toggle('hidden', tab !== 'settings')
@@ -261,8 +282,8 @@ async function openProfile() {
         <div class="field"><label>Name</label><input name="name" value="${escapeHtml(p.name ?? '')}" /></div>
         <div class="field"><label>Username (used to log in)</label><input name="username" value="${escapeHtml(p.username ?? '')}" autocomplete="username" /></div>
         <div class="field"><label>Email</label><input name="email" type="email" value="${escapeHtml(p.email ?? '')}" /></div>
-        <div class="field"><label>New password (leave blank to keep)</label><input name="newPassword" type="password" autocomplete="new-password" /></div>
-        <div class="field"><label>Current password (required to change password)</label><input name="currentPassword" type="password" autocomplete="current-password" /></div>
+        <div class="field"><label>New password (leave blank to keep)</label><div class="pw-row"><input name="newPassword" type="password" autocomplete="new-password" /><button type="button" class="pw-toggle" title="Show password"><span class="nav-icon" data-icon="eye"></span></button></div></div>
+        <div class="field"><label>Current password (required to change password)</label><div class="pw-row"><input name="currentPassword" type="password" autocomplete="current-password" /><button type="button" class="pw-toggle" title="Show password"><span class="nav-icon" data-icon="eye"></span></button></div></div>
         <p id="profile-msg" class="form-msg"></p>
       </form>`,
       footer: `<button class="btn" id="profile-save">Save</button>`,
@@ -304,7 +325,7 @@ async function renderUser() {
     $('#i-url').textContent = url
     $('#i-url').href = url
     $('#i-launch').href = url
-    $('#i-requests').textContent = instance.request_count ?? 0
+    $('#i-requests').textContent = fmtNum(instance.request_count ?? 0)
     $('#i-active').textContent = relTime(instance.last_active)
     $('#i-error').textContent = instance.error || ''
     $('#i-error').style.display = instance.error ? '' : 'none'
@@ -326,7 +347,7 @@ async function renderStats() {
       ['Users', stats.users, 'users'],
       ['Instances', stats.instances, 'server'],
       ['Running', stats.running, 'play'],
-      ['Total requests', stats.totalRequests, 'refresh'],
+      ['Total requests', fmtNum(stats.totalRequests), 'refresh'],
     ]
     $('#admin-stats').innerHTML = cards.map(([label, value, ic]) => `<div class="stat-card">
       <div class="stat-label"><span class="nav-icon" data-icon="${ic}"></span> ${label}</div>
@@ -356,7 +377,7 @@ function drawInstances() {
         <td>${escapeHtml(id)}</td>
         <td>${statusBadge(i.status)}</td>
         <td class="cell-mono">${i.host_port}</td>
-        <td>${i.request_count ?? 0}</td>
+        <td>${fmtNum(i.request_count ?? 0)}</td>
         <td>${relTime(i.last_active)}</td>
         <td><div class="cell-actions">
           <a class="btn btn-ghost btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external', 14)} Open</a>
@@ -479,8 +500,9 @@ $('#search-instances').addEventListener('input', drawInstances)
 $('#search-users').addEventListener('input', drawUsers)
 
 // ---- nav ----
-$$('#admin-nav .nav-item').forEach((n) => n.addEventListener('click', () => setAdminTab(n.dataset.tab)))
+$$('#admin-nav .nav-item, #mobile-admin-nav .nav-item').forEach((n) => n.addEventListener('click', () => setAdminTab(n.dataset.tab)))
 $('#profile-btn').addEventListener('click', openProfile)
+$('#mobile-profile-btn').addEventListener('click', openProfile)
 $('#refresh-btn').addEventListener('click', () => { boot() })
 
 // ---- boot ----
@@ -496,6 +518,7 @@ async function boot() {
     $('#whoami').textContent = user.username || user.email || user.name
     showApp()
     $('#admin-nav').classList.toggle('hidden', user.role !== 'admin')
+    $('#mobile-admin-nav').classList.toggle('hidden', user.role !== 'admin')
     $('#user-view').classList.toggle('hidden', user.role === 'admin')
     $('#admin-view').classList.toggle('hidden', user.role !== 'admin')
     if (user.role === 'admin') {
