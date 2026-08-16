@@ -4,7 +4,19 @@ import { getInstanceBySlug, touchInstanceRequest, updateInstance, userForSession
 import { startContainer, containerRunning, waitHealthy } from './orchestrator.js'
 import { SESSION_COOKIE } from './auth.js'
 
-const proxy = httpProxy.createProxyServer({ xfwd: false })
+// changeOrigin: rewrite Host to the target (127.0.0.1:port) so the instance's
+// trust fence sees loopback. dsh gates settings/credentials methods to loopback,
+// and the portal is the authenticated, authorized gateway into the instance —
+// so presenting proxied traffic as loopback is correct and required.
+const proxy = httpProxy.createProxyServer({ xfwd: false, changeOrigin: true })
+
+// Drop the browser's Origin on the outbound hop. dsh's trust fence rejects an
+// Origin that doesn't match the (now-rewritten) Host; with no Origin it allows.
+function stripOrigin(proxyReq) {
+  proxyReq.removeHeader('origin')
+}
+proxy.on('proxyReq', stripOrigin)
+proxy.on('proxyReqWs', stripOrigin)
 
 proxy.on('error', (err, _req, res) => {
   if (res && typeof res.writeHead === 'function' && !res.headersSent) {

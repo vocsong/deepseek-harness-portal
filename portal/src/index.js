@@ -154,7 +154,23 @@ fastify.post('/api/auth/register/verify', async (req, reply) => {
     ? req.body.name.trim().slice(0, 64)
     : email.split('@')[0]
 
-  const userId = createUser({ email, name, role: 'user' })
+  const username = typeof req.body?.username === 'string' && req.body.username.trim() !== ''
+    ? req.body.username.trim().toLowerCase().slice(0, 32)
+    : null
+  if (username !== null) {
+    if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+      return reply.code(400).send({ error: 'username: 3-32 chars (letters, digits, . _ -)' })
+    }
+    if (getUserByUsername(username)) {
+      return reply.code(409).send({ error: 'username already taken' })
+    }
+  }
+  const password = typeof req.body?.password === 'string' && req.body.password !== '' ? req.body.password : null
+  if (password !== null && password.length < 8) {
+    return reply.code(400).send({ error: 'password must be at least 8 characters' })
+  }
+
+  const userId = createUser({ email, username, name, passwordHash: password !== null ? hashPassword(password) : null, role: 'user' })
   let instance = null
   try {
     const slug = await uniqueSlug(`${slugBaseFor(email, name)}${config.instanceSlugSuffix}`)

@@ -249,6 +249,8 @@ $('#register-form').addEventListener('submit', async (e) => {
   const fd = new FormData(e.target)
   const email = fd.get('email')
   const name = fd.get('name')
+  const username = fd.get('username')
+  const password = fd.get('password')
   const inviteCode = fd.get('inviteCode')
   $('#auth-msg').textContent = ''
   const btn = $('#register-submit')
@@ -264,7 +266,7 @@ $('#register-form').addEventListener('submit', async (e) => {
       return
     }
     await withButtonLoading(btn, 'Creating account…', () =>
-      api('/api/auth/register/verify', { method: 'POST', body: { email, otp: fd.get('otp'), name, inviteCode } }))
+      api('/api/auth/register/verify', { method: 'POST', body: { email, otp: fd.get('otp'), name, username, password, inviteCode } }))
     await boot()
   } catch (err) {
     $('#auth-msg').textContent = err.message

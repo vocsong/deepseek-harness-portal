@@ -70,6 +70,17 @@
           <label for="reg-name">Name <span class="opt">(optional — used for your subdomain)</span></label>
           <input id="reg-name" name="name" autocomplete="name" />
         </div>
+        <div class="field">
+          <label for="reg-username">Username <span class="opt">(optional — used to log in)</span></label>
+          <input id="reg-username" name="username" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="reg-password">Password <span class="opt">(optional — set it now to log in with it)</span></label>
+          <div class="pw-row">
+            <input id="reg-password" name="password" type="password" autocomplete="new-password" />
+            <button type="button" class="pw-toggle" data-pw="reg-password" title="Show password"><span class="nav-icon" data-icon="eye"></span></button>
+          </div>
+        </div>
         <div class="field hidden" id="register-invite-row">
           <label for="reg-invite">Invitation code</label>
           <input id="reg-invite" name="inviteCode" autocomplete="off" />
