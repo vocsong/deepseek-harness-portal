@@ -20,6 +20,19 @@ async function api(path, opts = {}) {
   return data
 }
 
+// Run fn with the button disabled + a loading label, always restoring it.
+async function withButtonLoading(btn, loadingText, fn) {
+  const originalText = btn.textContent
+  btn.disabled = true
+  btn.textContent = loadingText
+  try {
+    return await fn()
+  } finally {
+    btn.disabled = false
+    btn.textContent = originalText
+  }
+}
+
 // ---- views ----
 
 function show(view) {
@@ -92,7 +105,8 @@ $('#login-otp-form').addEventListener('submit', async (e) => {
   $('#auth-msg').textContent = ''
   try {
     if (otpStep === 'send' || email !== pendingEmail) {
-      await api('/api/auth/login/request', { method: 'POST', body: { email } })
+      await withButtonLoading($('#login-otp-submit'), 'Sending…', () =>
+        api('/api/auth/login/request', { method: 'POST', body: { email } }))
       pendingEmail = email
       otpStep = 'verify'
       $('#login-otp-code-row').classList.remove('hidden')
@@ -100,7 +114,8 @@ $('#login-otp-form').addEventListener('submit', async (e) => {
       $('#auth-msg').textContent = 'Code sent — check your email.'
       return
     }
-    await api('/api/auth/login/verify', { method: 'POST', body: { email, otp: fd.get('otp') } })
+    await withButtonLoading($('#login-otp-submit'), 'Verifying…', () =>
+      api('/api/auth/login/verify', { method: 'POST', body: { email, otp: fd.get('otp') } }))
     await boot()
   } catch (err) {
     $('#auth-msg').textContent = err.message
@@ -117,7 +132,8 @@ $('#register-form').addEventListener('submit', async (e) => {
   $('#auth-msg').textContent = ''
   try {
     if (otpStep === 'send' || email !== pendingEmail) {
-      await api('/api/auth/register/request', { method: 'POST', body: { email } })
+      await withButtonLoading($('#register-submit'), 'Sending…', () =>
+        api('/api/auth/register/request', { method: 'POST', body: { email } }))
       pendingEmail = email
       otpStep = 'verify'
       $('#register-otp-row').classList.remove('hidden')
@@ -125,7 +141,8 @@ $('#register-form').addEventListener('submit', async (e) => {
       $('#auth-msg').textContent = 'Code sent — check your email.'
       return
     }
-    await api('/api/auth/register/verify', { method: 'POST', body: { email, otp: fd.get('otp'), name } })
+    await withButtonLoading($('#register-submit'), 'Creating account…', () =>
+      api('/api/auth/register/verify', { method: 'POST', body: { email, otp: fd.get('otp'), name } }))
     await boot()
   } catch (err) {
     $('#auth-msg').textContent = err.message

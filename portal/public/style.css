@@ -40,3 +40,4 @@ pre.logs { background:#0c0e12; border:1px solid var(--line); border-radius:8px; 
 .tabs .btn.primary, .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
 #settings-panel h3 { margin:0 0 10px; font-size:15px; }
 @keyframes fadein { from{opacity:0} to{opacity:1} }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
