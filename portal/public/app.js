@@ -7,12 +7,13 @@ let pendingEmail = ''
 let cfg = { domain: '', instanceDomain: '', otpRegistrationEnabled: true, passwordLoginEnabled: true }
 
 async function api(path, opts = {}) {
+  const body = opts.body !== undefined ? JSON.stringify(opts.body) : undefined
   const res = await fetch(path, {
-    headers: { 'content-type': 'application/json' },
+    ...(body !== undefined ? { headers: { 'content-type': 'application/json' } } : {}),
     credentials: 'same-origin',
     cache: 'no-store',
     ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    body,
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -60,7 +61,7 @@ function renderAuthTabs() {
   $('#tab-login').classList.toggle('primary', login)
   $('#tab-register').classList.toggle('primary', !login)
   $('#login-form').classList.toggle('hidden', !login)
-  $('#login-otp-form').classList.toggle('hidden', login)
+  $('#login-otp-form').classList.add('hidden') // only revealed via "Email me a code instead"
   $('#register-form').classList.toggle('hidden', login)
 }
 
@@ -238,9 +239,9 @@ async function renderInstances() {
       <td>
         <button class="btn" data-act="start" data-id="${i.id}">Start</button>
         <button class="btn" data-act="stop" data-id="${i.id}">Stop</button>
-        <button class="btn" data-act="repro" data-id="${i.id}">Reprovision</button>
+        <button class="btn" data-act="reprovision" data-id="${i.id}">Reprovision</button>
         <button class="btn" data-act="logs" data-id="${i.id}">Logs</button>
-        <button class="btn" data-act="del" data-id="${i.id}">Delete</button>
+        <button class="btn" data-act="delete" data-id="${i.id}">Delete</button>
         <a class="btn" href="${url}" target="_blank" rel="noopener">Open</a>
       </td>
     </tr>`
@@ -254,10 +255,11 @@ async function renderUsers() {
   const { users } = await api('/api/admin/users')
   const rows = users.map((u) => `<tr>
     <td>${u.username ?? '—'}</td><td>${u.email ?? '—'}</td><td>${u.name ?? ''}</td>
-    <td>${u.role}</td><td>${fmtTime(u.created_at)}</td></tr>`).join('')
+    <td>${u.role}</td><td>${fmtTime(u.created_at)}</td>
+    <td>${u.role !== 'admin' ? `<button class="btn" data-uid="${u.id}" data-act="deluser">Delete</button>` : ''}</td></tr>`).join('')
   $('#users-table').innerHTML =
-    `<table><thead><tr><th>Username</th><th>Email</th><th>Name</th><th>Role</th><th>Created</th></tr></thead>
-     <tbody>${rows || '<tr><td colspan="5">none</td></tr>'}</tbody></table>`
+    `<table><thead><tr><th>Username</th><th>Email</th><th>Name</th><th>Role</th><th>Created</th><th></th></tr></thead>
+     <tbody>${rows || '<tr><td colspan="6">none</td></tr>'}</tbody></table>`
 }
 
 async function renderSettings() {
@@ -282,11 +284,21 @@ $('#tab-instances').addEventListener('click', () => { adminTab = 'instances'; re
 $('#tab-users').addEventListener('click', () => { adminTab = 'users'; renderAdmin() })
 $('#tab-settings').addEventListener('click', () => { adminTab = 'settings'; renderAdmin() })
 
+$('#users-table').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act="deluser"]')
+  if (!btn) return
+  if (!confirm('Delete this user, their instance, and all its data?')) return
+  try {
+    await api(`/api/admin/users/${btn.dataset.uid}/delete`, { method: 'POST' })
+    renderAdmin()
+  } catch (err) { alert(err.message) }
+})
+
 $('#instances-table').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-act]')
   if (!btn) return
   const { act, id } = btn.dataset
-  if (act === 'del' && !confirm('Delete instance and its volumes?')) return
+  if (act === 'delete' && !confirm('Delete instance and its volumes?')) return
   try {
     if (act === 'logs') {
       const { logs } = await api(`/api/admin/instances/${id}/logs`)

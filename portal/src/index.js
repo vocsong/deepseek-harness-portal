@@ -7,9 +7,9 @@ import { dirname, join } from 'node:path'
 import { config } from './config.js'
 import {
   createInstanceRow, createUser, deleteAllSessionsForUser, deleteInstance,
-  ensureAdmin, getEmailDomains, getInstanceById, getInstanceByUserId,
-  getInstanceBySlug, getUserByEmail, getUserById, getUserByUsername,
-  listInstancesWithUsers, listUsers, otpRegistrationEnabled,
+  deleteUser, ensureAdmin, getEmailDomains, getInstanceById,
+  getInstanceByUserId, getInstanceBySlug, getUserByEmail, getUserById,
+  getUserByUsername, listInstancesWithUsers, listUsers, otpRegistrationEnabled,
   passwordLoginEnabled, setSetting, setUserPassword, updateInstance,
   updateUser, userForSession,
 } from './db.js'
@@ -108,8 +108,10 @@ async function uniqueSlug(base) {
 }
 
 function slugBaseFor(email, name) {
-  const local = (email ?? '').split('@')[0]
-  return slugify(local || name || 'user')
+  const base = typeof name === 'string' && name.trim() !== ''
+    ? name
+    : (email ?? '').split('@')[0]
+  return slugify(base || 'user')
 }
 
 // ---- auth: register (email OTP) -------------------------------------------
@@ -384,6 +386,17 @@ fastify.post('/api/admin/users/:id/reset-password', async (req, reply) => {
     return reply.code(400).send({ error: 'password must be at least 8 characters' })
   }
   setUserPassword(user.id, hashPassword(password))
+  return { ok: true }
+})
+
+fastify.post('/api/admin/users/:id/delete', async (req, reply) => {
+  if (!requireAdmin(req, reply)) return
+  const user = getUserById(Number(req.params.id))
+  if (!user) return reply.code(404).send({ error: 'not found' })
+  if (user.role === 'admin') return reply.code(400).send({ error: 'cannot delete an admin account' })
+  const inst = getInstanceByUserId(user.id)
+  if (inst) await removeContainer(inst.container_name)
+  deleteUser(user.id)
   return { ok: true }
 })
 

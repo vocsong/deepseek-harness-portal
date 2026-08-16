@@ -145,6 +145,12 @@ export function deleteInstance(id) {
   db.prepare('DELETE FROM instances WHERE id = ?').run(id)
 }
 
+export function deleteUser(id) {
+  db.prepare('DELETE FROM instances WHERE user_id = ?').run(id)
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id)
+  db.prepare('DELETE FROM users WHERE id = ?').run(id)
+}
+
 export function listInstancesWithUsers() {
   return db.prepare(
     `SELECT i.*, u.email, u.username, u.name AS user_name, u.role AS user_role
