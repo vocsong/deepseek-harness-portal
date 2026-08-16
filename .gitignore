@@ -5,3 +5,5 @@ backups/
 *.log
 .env
 node_modules/
+# Windows ssh.exe writes a literal NUL file under Git Bash for podman machine ssh
+NUL

@@ -25,3 +25,5 @@ cat tenant-egress.nft | podman machine ssh "$MACHINE" 'sudo nft -f -'
 
 echo 'firewall: applied:'
 podman machine ssh "$MACHINE" 'sudo nft list table inet tenant-egress'
+# Windows ssh.exe can write a stray NUL (known_hosts) file under Git Bash.
+rm -f NUL 2>/dev/null || true
