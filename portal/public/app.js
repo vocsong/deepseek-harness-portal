@@ -133,10 +133,9 @@ $('#register-form').addEventListener('submit', async (e) => {
 })
 
 $('#logout').addEventListener('click', async () => {
-  try { await api('/api/auth/logout', { method: 'POST' }) } catch {}
-  me = null
-  show('auth-view')
-  resetAuth()
+  try { await api('/api/auth/logout', { method: 'POST' }) } catch { /* ignore */ }
+  // Full navigation so no in-memory state or stale view survives.
+  window.location.href = '/'
 })
 
 // ---- profile ----

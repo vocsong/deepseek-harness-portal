@@ -28,4 +28,8 @@ export function destroySession(token) {
   deleteSession(token)
 }
 
-export const SESSION_COOKIE = 'dsp_session'
+export const SESSION_COOKIE = 'portal_session'
+
+// Cookie names used by earlier releases. Cleared on logout so browsers
+// don't accumulate dead cookies; the server never reads them.
+export const LEGACY_SESSION_COOKIES = ['dsp_session']

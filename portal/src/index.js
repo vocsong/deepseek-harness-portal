@@ -13,7 +13,7 @@ import {
   passwordLoginEnabled, setSetting, setUserPassword, updateInstance,
   updateUser, userForSession,
 } from './db.js'
-import { createSession, destroySession, hashPassword, isValidEmail, normalizeEmail, verifyPassword, SESSION_COOKIE } from './auth.js'
+import { createSession, destroySession, hashPassword, isValidEmail, LEGACY_SESSION_COOKIES, normalizeEmail, verifyPassword, SESSION_COOKIE } from './auth.js'
 import { issueOtp, verifyOtp } from './otp.js'
 import { sendOtpCode } from './mailer.js'
 import {
@@ -201,17 +201,19 @@ fastify.post('/api/auth/login/verify', async (req, reply) => {
 })
 
 fastify.post('/api/auth/logout', async (req, reply) => {
-  // A browser may carry several `dsp_session` cookies scoped to different
-  // domains (host-only, .vocsong.com, .deepseek.vocsong.com, ...) accumulated
-  // across config changes. fastify collapses duplicate cookie names, so parse
-  // the RAW Cookie header and kill every one of them server-side.
+  // A browser may carry several session cookies scoped to different domains
+  // (host-only, .vocsong.com, .deepseek.vocsong.com, ...) accumulated across
+  // config changes and cookie-name changes. fastify collapses duplicate names,
+  // so parse the RAW Cookie header and kill every session token server-side.
   const raw = String(req.raw.headers.cookie ?? '')
   const tokens = new Set()
   for (const part of raw.split(';')) {
     const eq = part.indexOf('=')
     if (eq === -1) continue
     const name = part.slice(0, eq).trim()
-    if (name === SESSION_COOKIE) tokens.add(part.slice(eq + 1).trim())
+    if (name === SESSION_COOKIE || LEGACY_SESSION_COOKIES.includes(name)) {
+      tokens.add(part.slice(eq + 1).trim())
+    }
   }
   if (req.cookies?.[SESSION_COOKIE]) tokens.add(req.cookies[SESSION_COOKIE])
 
@@ -221,16 +223,18 @@ fastify.post('/api/auth/logout', async (req, reply) => {
     else destroySession(token)
   }
 
-  // Clear the cookie across every scope we may have set it under. Domain
-  // cookies are only deleted by an EQUAL Domain attribute, so cover them all.
+  // Clear the cookie across every scope and every cookie name we may have used.
+  const names = [SESSION_COOKIE, ...LEGACY_SESSION_COOKIES]
   const scopes = [undefined, config.cookieDomain, config.domain, `.${config.domain}`]
-  for (const scope of scopes) {
-    reply.clearCookie(SESSION_COOKIE, {
-      path: '/',
-      sameSite: 'lax',
-      secure: config.cookieDomain !== '',
-      ...(scope ? { domain: scope } : {}),
-    })
+  for (const name of names) {
+    for (const scope of scopes) {
+      reply.clearCookie(name, {
+        path: '/',
+        sameSite: 'lax',
+        secure: config.cookieDomain !== '',
+        ...(scope ? { domain: scope } : {}),
+      })
+    }
   }
   return { ok: true }
 })
