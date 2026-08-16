@@ -30,8 +30,8 @@ await fastify.register(cookie)
 await fastify.register(fastifyStatic, {
   root: join(__dirname, '..', 'public'),
   prefix: '/',
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-store')
+  setHeaders: (reply) => {
+    reply.header('Cache-Control', 'no-store')
   },
 })
 
