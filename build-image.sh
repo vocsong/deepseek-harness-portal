@@ -1,25 +1,51 @@
 #!/bin/bash
-# Build the dsh:latest image from the fresh upstream clone in ./dsh.
+# Build dsh:latest from the approved upstream revision and tracked image patches.
 set -euo pipefail
 cd "$(dirname "$0")"
 
+APPROVED_DSH_COMMIT='47f943859bef60e4160492346772ded9b24f765a'
 if [ ! -f dsh/package.json ]; then
-  echo "error: dsh/ clone missing. Run: git clone --depth 1 https://github.com/deepseek-ai/deepseek-harness.git dsh" >&2
+  echo "error: dsh/ clone missing. See README.md for the pinned clone commands." >&2
   exit 1
 fi
+ACTUAL_DSH_COMMIT=$(git -C dsh rev-parse HEAD)
+if [ "$ACTUAL_DSH_COMMIT" != "$APPROVED_DSH_COMMIT" ]; then
+  echo "error: dsh commit $ACTUAL_DSH_COMMIT is not approved $APPROVED_DSH_COMMIT" >&2
+  exit 1
+fi
+if [ -n "$(git -C dsh status --porcelain --untracked-files=all)" ]; then
+  echo "error: dsh contains tracked or untracked changes; reset to the approved commit" >&2
+  exit 1
+fi
+[ -s image/dsh-security.patch ] || { echo 'error: image/dsh-security.patch missing' >&2; exit 1; }
+git -C dsh apply --check ../image/dsh-security.patch
 
-# Fail before contacting the builder if the deny-by-default context policy was
-# removed. .gitignore is not a container-build security boundary.
-required_dockerignore=(
-  '*' '!dsh/' '!dsh/**' '!image/' '!image/Dockerfile' '!image/start.sh'
-  'dsh/.git' 'dsh/**/.git' 'dsh/**/node_modules' 'dsh/**/.env' 'dsh/**/.env.*'
+# The deny-by-default file may contain only these build-context re-inclusions.
+expected_includes=(
+  '!dsh/' '!dsh/**' '!image/' '!image/Dockerfile' '!image/start.sh' '!image/dsh-security.patch'
 )
-for pattern in "${required_dockerignore[@]}"; do
-  grep -Fqx -- "$pattern" .dockerignore || {
-    echo "error: .dockerignore is missing required security rule: $pattern" >&2
+mapfile -t actual_includes < <(grep '^!' .dockerignore)
+if [ "${#actual_includes[@]}" -ne "${#expected_includes[@]}" ]; then
+  echo 'error: .dockerignore contains an unexpected build-context inclusion' >&2
+  exit 1
+fi
+for i in "${!expected_includes[@]}"; do
+  if [ "${actual_includes[$i]}" != "${expected_includes[$i]}" ]; then
+    echo "error: unexpected .dockerignore inclusion: ${actual_includes[$i]}" >&2
     exit 1
-  }
+  fi
 done
 
-podman build -t dsh:latest -f image/Dockerfile .
-echo "built dsh:latest"
+# Build from a clean git archive, never from the working dsh directory. Ignored
+# package-manager hooks, generated files, or local credentials cannot enter the
+# context even if a future .dockerignore edit is mistaken.
+CONTEXT=$(mktemp -d)
+cleanup() { rm -rf "$CONTEXT"; }
+trap cleanup EXIT
+mkdir -p "$CONTEXT/dsh" "$CONTEXT/image"
+git -C dsh archive "$APPROVED_DSH_COMMIT" | tar -x -C "$CONTEXT/dsh"
+cp image/Dockerfile image/start.sh image/dsh-security.patch "$CONTEXT/image/"
+cp .dockerignore "$CONTEXT/.dockerignore"
+
+podman build --pull=always -t dsh:latest -f "$CONTEXT/image/Dockerfile" "$CONTEXT"
+echo "built dsh:latest from $APPROVED_DSH_COMMIT"

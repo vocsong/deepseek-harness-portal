@@ -35,7 +35,7 @@ OTP delivery uses SMTP (nodemailer), which is required in production. Code loggi
 | Portal app | `portal/` | Fastify server: auth (OTP + password, bcrypt, session cookie), admin/user JSON API, static dashboard, subdomain reverse proxy |
 | Orchestrator | `portal/src/orchestrator.js` | `podman` CLI wrappers: run/start/stop/rm/logs, port allocation, health polling, background provisioning |
 | Storage | `portal/data/portal.db` | SQLite (better-sqlite3): users, otps, settings, instances, sessions |
-| dsh image | `image/Dockerfile` | Builds `dsh:latest` from `dsh/` (fresh upstream clone) with two documented patches |
+| dsh image | `image/Dockerfile` | Builds `dsh:latest` from an approved upstream commit, a reviewed dependency-security patch, and two documented source patches |
 | dsh clone | `dsh/` | Fresh `deepseek-harness` checkout (build context, gitignored) |
 
 ### Per-instance model
@@ -48,10 +48,13 @@ Each user gets exactly one instance (`1 user : 1 instance`):
 - The proxy presents traffic to the instance **as loopback** (`changeOrigin` rewrites `Host` to `127.0.0.1:<port>` and the browser's `Origin` is dropped) so dsh's loopback-only settings/credentials methods work; `TRUSTED_HOST=<slug>.<instanceDomain>` is still passed as a fallback
 - The user's DeepSeek API key is entered inside their instance (Settings → Models) and lives only in that instance's home volume
 
-### Two build-time patches to dsh (see `image/Dockerfile`)
+### Build-time changes to dsh (see `image/Dockerfile`)
 
-1. Identity opener → `"You are an AI agent."` (branding)
-2. Allow `--host 0.0.0.0` → required so the published port reaches dsh inside the container (its CLI refuses `0.0.0.0` by default for LAN safety; inside the container only the loopback-published port is reachable)
+- `image/dsh-security.patch` applies reviewed transitive dependency floors and a matching frozen lockfile (production audit: zero known advisories at review time).
+- Identity opener → `"You are an AI agent."` (branding).
+- Allow `--host 0.0.0.0` → required so the published port reaches dsh inside the container (its CLI refuses `0.0.0.0` by default for LAN safety; inside the container only the loopback-published port is reachable).
+
+The build script requires the exact approved upstream commit and fails if source/patch checks drift.
 
 ### Subdomains, not paths
 
@@ -73,14 +76,17 @@ Instances use **one-level subdomains** (`<slug>.<instance-domain>`), not `<your-
 
 ```sh
 git clone --depth 1 https://github.com/deepseek-ai/deepseek-harness.git dsh
+git -C dsh fetch --depth 1 origin 47f943859bef60e4160492346772ded9b24f765a
+git -C dsh checkout --detach 47f943859bef60e4160492346772ded9b24f765a
 ```
 
 ### 2. Build the dsh image
 
 ```sh
 ./build-image.sh
-# or: podman build -t dsh:latest -f image/Dockerfile .
 ```
+
+Always use the script: it verifies the approved commit and patch, validates the context policy, and builds from a clean `git archive`. A direct `podman build` bypasses those controls.
 
 First build is slow (pnpm install + full harness build); result is ~2.5 GB.
 

@@ -10,7 +10,7 @@
 # Each instance is launched with a private DSH_HOME and workspace volume, and
 # trusts exactly its own subdomain (TRUSTED_HOST env).
 
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436
 
 # corepack (for pnpm) + git (lefthook postinstall) + curl (health checks)
 # + python3/build-essential (node-pty native addon compile)
@@ -21,22 +21,33 @@ RUN corepack enable \
 
 WORKDIR /app/dsh
 
-# Full upstream checkout (shallow clone placed here by the build context).
+# Full approved upstream checkout plus a reviewed, reproducible dependency-only
+# security patch. build-image.sh verifies the exact upstream commit first.
 COPY dsh/ ./
+COPY image/dsh-security.patch /tmp/dsh-security.patch
+RUN git init . \
+ && git apply --check /tmp/dsh-security.patch \
+ && git apply /tmp/dsh-security.patch \
+ && rm /tmp/dsh-security.patch
 
-# Apply the two build-time patches.
-RUN sed -i "s/text: 'You are an AI agent powered by DeepSeek Harness.'/text: 'You are an AI agent.'/" \
-      packages/core/system-prompt/src/index.ts \
- && sed -i "s/options.host === '0.0.0.0'/false/" \
-      packages/bundle/web-app/src/startup.ts \
- && grep -n "You are an AI agent\." packages/core/system-prompt/src/index.ts | head -1 \
- && grep -n "options.host === '0.0.0.0'" packages/bundle/web-app/src/startup.ts | head -1 || true
+# Apply the two build-time source patches, failing if upstream changed or either
+# replacement did not happen exactly once.
+RUN set -eux; \
+    identity='packages/core/system-prompt/src/index.ts'; \
+    startup='packages/bundle/web-app/src/startup.ts'; \
+    test "$(grep -Fxc "        text: 'You are an AI agent powered by DeepSeek Harness.'," "$identity")" -eq 1; \
+    test "$(grep -Fxc "    if (options.host === '0.0.0.0') {" "$startup")" -eq 1; \
+    sed -i "s/text: 'You are an AI agent powered by DeepSeek Harness.'/text: 'You are an AI agent.'/" "$identity"; \
+    sed -i "s/options.host === '0.0.0.0'/false/" "$startup"; \
+    ! grep -Fq "You are an AI agent powered by DeepSeek Harness." "$identity"; \
+    grep -Fq "text: 'You are an AI agent.'" "$identity"; \
+    ! grep -Fq "options.host === '0.0.0.0'" "$startup"; \
+    grep -Fq 'if (false) {' "$startup"
 
-# Install + build the harness (produces apps/web/dist and package lib/*).
-# `git init .` satisfies lefthook's postinstall (the copy is not a git checkout).
+# Install + audit + build the harness (produces apps/web/dist and package lib/*).
 RUN corepack enable \
- && git init . \
  && pnpm install --frozen-lockfile \
+ && pnpm audit --prod \
  && pnpm run build
 
 # Non-root runtime user with a private home (DSH_HOME) and a workspace cwd.
