@@ -1,6 +1,6 @@
 import httpProxy from 'http-proxy'
 import { config } from './config.js'
-import { getInstanceBySlug, touchInstanceRequest, updateInstance, userForSession } from './db.js'
+import { getInstanceBySlug, touchInstanceRequest, updateInstanceUnlessDeleting, userForSession } from './db.js'
 import { startContainer, containerRunning, waitHealthy } from './orchestrator.js'
 import { SESSION_COOKIE } from './auth.js'
 
@@ -10,6 +10,7 @@ import { SESSION_COOKIE } from './auth.js'
 // so presenting proxied traffic as loopback is correct and required.
 const proxy = httpProxy.createProxyServer({ xfwd: false, changeOrigin: true })
 const activeWebSockets = new Set()
+const ensureRunningPromises = new Map()
 
 export function closeUserSockets(userId) {
   for (const tracked of activeWebSockets) {
@@ -98,8 +99,8 @@ function mayAccess(user, inst) {
  * After starting, waits until dsh actually serves HTTP before returning.
  * @returns true once the instance is running and healthy.
  */
-async function ensureRunning(inst) {
-  if (inst.status === 'failed') return false
+async function ensureRunningInner(inst) {
+  if (inst.status === 'failed' || inst.status === 'deleting') return false
   if (inst.status === 'provisioning') return await containerRunning(inst.container_name)
   if (inst.status === 'stopped' || !(await containerRunning(inst.container_name))) {
     await startContainer(inst.container_name)
@@ -107,8 +108,17 @@ async function ensureRunning(inst) {
   if (!(await containerRunning(inst.container_name))) return false
   // Wait for the app to serve; a freshly started container isn't ready yet.
   const healthy = await waitHealthy(inst.host_port, 30000)
-  if (healthy) updateInstance(inst.id, { status: 'running', error: null })
+  if (healthy && !updateInstanceUnlessDeleting(inst.id, { status: 'running', error: null })) return false
   return healthy
+}
+
+function ensureRunning(inst) {
+  const existing = ensureRunningPromises.get(inst.container_name)
+  if (existing) return existing
+  const pending = ensureRunningInner(inst)
+    .finally(() => ensureRunningPromises.delete(inst.container_name))
+  ensureRunningPromises.set(inst.container_name, pending)
+  return pending
 }
 
 /**
@@ -133,16 +143,24 @@ export function setupProxy(fastify) {
     // Auto-start on access (launch always works); start is fast for a stopped
     // container. If it fails, report not-running instead of a hung proxy.
     let running = inst.status === 'running' && (await containerRunning(inst.container_name))
-    if (!running && inst.status !== 'failed' && inst.status !== 'provisioning') {
+    if (!running && !['failed', 'provisioning', 'deleting'].includes(inst.status)) {
       running = await ensureRunning(inst)
     }
     if (!running) {
       reply.code(503).type('text/plain').send('instance starting, try again in a moment')
       return reply
     }
+    // Revalidate identity and routing after every startup/inspection await. A
+    // deleted row must never forward to a port that may be allocated anew.
+    const current = getInstanceBySlug(slug)
+    const currentUser = userForSession(req.cookies?.[SESSION_COOKIE])
+    if (!current || current.id !== inst.id || current.status !== 'running' || !mayAccess(currentUser, current)) {
+      reply.code(503).type('text/plain').send('instance unavailable')
+      return reply
+    }
     touchInstanceRequest(slug)
     reply.hijack()
-    proxy.web(req.raw, reply.raw, { target: `http://127.0.0.1:${inst.host_port}` })
+    proxy.web(req.raw, reply.raw, { target: `http://127.0.0.1:${current.host_port}` })
   })
 
   async function handleUpgrade(req, socket, head) {
@@ -163,7 +181,7 @@ export function setupProxy(fastify) {
       return
     }
     let running = inst.status === 'running' && (await containerRunning(inst.container_name))
-    if (!running && inst.status !== 'failed' && inst.status !== 'provisioning') {
+    if (!running && !['failed', 'provisioning', 'deleting'].includes(inst.status)) {
       running = await ensureRunning(inst)
     }
     if (!running) {
@@ -172,18 +190,30 @@ export function setupProxy(fastify) {
     }
     // Container startup may take tens of seconds. Revalidate after the final
     // await so a password reset/logout during startup cannot escape revocation.
+    const current = getInstanceBySlug(slug)
     const currentUser = userForSession(sessionToken)
-    if (!mayAccess(currentUser, inst)) {
+    if (!current || current.id !== inst.id || current.status !== 'running' || !mayAccess(currentUser, current)) {
       socket.destroy()
       return
     }
     touchInstanceRequest(slug)
-    const tracked = { socket, userId: currentUser.id, token: sessionToken }
+    const tracked = { socket, userId: currentUser.id, token: sessionToken, lastActivity: Date.now() }
     activeWebSockets.add(tracked)
-    const untrack = () => activeWebSockets.delete(tracked)
+    const markActivity = () => {
+      const now = Date.now()
+      if (now - tracked.lastActivity >= 60 * 1000) {
+        tracked.lastActivity = now
+        touchInstanceRequest(slug)
+      }
+    }
+    const untrack = () => {
+      activeWebSockets.delete(tracked)
+      socket.off('data', markActivity)
+    }
+    socket.on('data', markActivity)
     socket.once('close', untrack)
     socket.once('error', untrack)
-    proxy.ws(req, socket, head, { target: `ws://127.0.0.1:${inst.host_port}` })
+    proxy.ws(req, socket, head, { target: `ws://127.0.0.1:${current.host_port}` })
   }
 
   // EventEmitter does not await async listeners. Convert rejections into a

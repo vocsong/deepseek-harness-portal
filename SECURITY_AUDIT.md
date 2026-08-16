@@ -9,7 +9,7 @@
 
 The portal has sound foundations—prepared SQL, bcrypt password hashing, cryptographically random OTP/session values, server-side role and ownership checks, escaped frontend rendering, rootless/non-root containers, and loopback-only host publication. No SQL injection, authorization bypass, or stored/reflected XSS was verified. The portal's locked npm dependency tree has no known advisories, and no secret was found in tracked files or reachable Git history.
 
-It is **not yet safe to treat tenant containers as an untrusted multi-tenant boundary**. The most urgent issues are:
+At the time of the audit, it was **not yet safe to treat tenant containers as an untrusted multi-tenant boundary**. The most urgent issues were:
 
 1. The parent-domain portal bearer cookie is forwarded into tenant containers over HTTP and WebSocket.
 2. Tenant subdomains are same-site with the portal and can submit destructive admin requests because mutations have no CSRF/Origin protection.
@@ -27,8 +27,9 @@ The P0 portal/host containment pass has been deployed and verified:
 - **Resolved:** SEC-01 (fail-closed OTP production configuration), SEC-02 (HTTP/WS credential and response-cookie isolation), SEC-03 (exact-Origin + per-session CSRF), SEC-05 (safe admin bootstrap), SEC-06 (deny-by-default build context), SEC-10 (malformed WS containment), SEC-14 (browser headers), GET logout, and raw proxy error disclosure.
 - **Resolved operationally:** DEP-01 ACLs were restricted to the operator/Administrators/SYSTEM; the known test administrator was removed; all pre-fix sessions and OTPs were invalidated; the invitation secret was rotated to a cryptographically random value.
 - **Resolved in the P1 auth pass:** SEC-04 (persistent per-IP/per-account/invite/SMTP throttling and OTP cooldown), SEC-08 (digested bearer tokens, absolute/idle server expiry, and security-event rotation/revocation), OTP account-enumeration responses, failed-delivery OTP preservation, and immediate/periodic WebSocket session revocation.
-- **Resolved in the image pass:** SEC-07 (reviewed semver-compatible transitive floors; built-image production audit now reports zero advisories) and the source/base/patch-verification portions of SEC-15 (approved dsh commit, pinned Bookworm digest, reproducible security patch, fail-closed source patch checks). All tenant containers were recreated on the audited image while preserving their two data volumes.
-- **Still open:** SEC-09, SEC-11 through SEC-13, immutable digest deployment and the Node 24/Trixie lifecycle portion of SEC-15, the WebSocket activity-accounting portion of SEC-16, DEP-02, service-credential rotation at the external provider, and the longer-term container/DNS isolation work.
+- **Resolved in the image pass:** SEC-07 (reviewed semver-compatible transitive floors; built-image production audit now reports zero advisories) and SEC-15's current build/deployment risks (approved dsh commit, pinned Bookworm digest, reproducible security patch, fail-closed checks, and content-addressed production deployment). All tenant containers were recreated on the audited image while preserving their two data volumes.
+- **Resolved in the P2 lifecycle pass:** SEC-12 (persistent deletion tombstones, serialized verified cleanup, no force-removal of in-use data), SEC-13 (deduplicated state cache, per-instance lifecycle locks, and Podman timeouts), and SEC-16 (immediate/periodic socket revocation plus throttled inbound-frame activity accounting). SEC-11 is substantially contained with explicit rootless `pasta`, startup preflight, PID/CPU/memory/swap/log/tmpfs bounds, no capabilities, no-new-privileges, read-only roots, and loopback publication; named-volume quotas/orphan reconciliation remain defense-in-depth work.
+- **Still open:** SEC-09, named-volume quota/periodic orphan-reconciliation portions of SEC-11/SEC-12, the future Node 24/Trixie lifecycle migration, DEP-02, service-credential rotation at the external provider, checked-in automated security tests/CI, and the P3 registrable-domain redesign.
 
 Live regression checks covered the CSRF deny/allow matrix, native POST logout, session invalidation, privileged `settings.describe`, malformed WebSocket cookies, HTTP/WS credential stripping, successful/rejected WS response-cookie filtering, headers, SMTP/bootstrap failure modes, persistent throttling, plaintext-token migration/WAL cleanup, profile token rotation, WebSocket revocation, OTP delivery failure, and portal health.
 
@@ -278,6 +279,8 @@ Do not URI-decode the expected hex token; validate it against the exact format. 
 
 ### SEC-11 — Medium: tenant resource and network controls are incomplete/implicit
 
+**Status (2026-08-16): substantially remediated.** Production now requires rootless Podman and `pasta` preflight; every tenant has explicit CPU/memory/swap/PID limits, bounded logs/tmpfs, a read-only root, all capabilities dropped, no-new-privileges, and loopback-only publication. Live probes preserved internet egress while blocking the portal and sibling host-published ports. Named-volume quotas remain unresolved on this storage backend.
+
 **Evidence**
 
 `portal/src/orchestrator.js:28-39` sets CPU, memory, volumes, loopback publication, and restart policy, but no PID limit, disk/volume quota, bounded log driver, explicit network mode, read-only root, or `no-new-privileges` setting.
@@ -296,6 +299,8 @@ Add PID, writable-layer/volume, memory-swap, and bounded logging limits. Select 
 
 ### SEC-12 — Medium: deletion suppresses Podman failures before database removal
 
+**Status (2026-08-16): remediated.** Deletion now writes a durable `deleting` tombstone, serializes all lifecycle work, distinguishes absence from engine failure, removes volumes without force, verifies absence, and retains the database row/data on failure. Concurrency and in-use-volume fail-closed probes passed. Periodic orphan inventory remains planned defense in depth.
+
 **Evidence**
 
 `portal/src/orchestrator.js:50-58` ignores all container/volume removal errors. Callers then delete the user/instance database record (`portal/src/index.js:419-427,456-462`).
@@ -311,6 +316,8 @@ Use a `deleting` state/tombstone, distinguish “already absent” from failure,
 ---
 
 ### SEC-13 — Medium: authenticated traffic can spawn unbounded Podman subprocesses
+
+**Status (2026-08-16): remediated.** Running-state inspections are single-flight and briefly cached, lifecycle operations are serialized per tenant, starts are deduplicated at the proxy, stale pending inspections cannot repopulate cache state, and every Podman subprocess has a timeout. Operational inspection failures now fail closed rather than triggering a start.
 
 **Evidence**
 
@@ -344,6 +351,8 @@ Add a tested CSP with `frame-ancestors 'none'`, `object-src 'none'`, and restric
 
 ### SEC-15 — Medium: image builds are mutable and patch validation fails open
 
+**Status (2026-08-16): remediated for the current Node 22/Bookworm line.** The source commit and base digest are pinned, builds use a clean archive and exact context allowlist, source/security patches and the zero-advisory production audit fail closed, and production accepts only a content-addressed `sha256:` image ID. Node 24/Trixie remains a scheduled lifecycle migration rather than a current build-integrity gap.
+
 **Evidence**
 
 - Mutable base: `image/Dockerfile:13` (`node:22-bookworm-slim`).
@@ -362,6 +371,8 @@ Pin the base image by digest, pin/verify the dsh source commit, deploy immutable
 ---
 
 ### SEC-16 — Medium: WebSocket authorization and activity are checked only at upgrade
+
+**Status (2026-08-16): remediated.** Sockets are tracked by user/session, closed immediately on local security events and periodically on expiry/revocation, authorization and instance identity are revalidated after startup waits, and inbound frame activity updates tenant activity with a one-minute throttle.
 
 **Evidence**
 

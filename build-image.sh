@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APPROVED_DSH_COMMIT='47f943859bef60e4160492346772ded9b24f765a'
+IMAGE_TAG='dsh:47f9438-sec1'
 if [ ! -f dsh/package.json ]; then
   echo "error: dsh/ clone missing. See README.md for the pinned clone commands." >&2
   exit 1
@@ -47,5 +48,11 @@ git -C dsh archive "$APPROVED_DSH_COMMIT" | tar -x -C "$CONTEXT/dsh"
 cp image/Dockerfile image/start.sh image/dsh-security.patch "$CONTEXT/image/"
 cp .dockerignore "$CONTEXT/.dockerignore"
 
-podman build --pull=always -t dsh:latest -f "$CONTEXT/image/Dockerfile" "$CONTEXT"
-echo "built dsh:latest from $APPROVED_DSH_COMMIT"
+podman build --pull=always -t "$IMAGE_TAG" -f "$CONTEXT/image/Dockerfile" "$CONTEXT"
+# Convenience tag for local inspection only; production orchestration uses the
+# immutable reviewed tag above.
+podman tag "$IMAGE_TAG" dsh:latest
+IMAGE_ID="$(podman image inspect "$IMAGE_TAG" --format '{{.Id}}')"
+echo "built $IMAGE_TAG from $APPROVED_DSH_COMMIT"
+echo "set this immutable deployment reference in .env:"
+echo "DSH_IMAGE=$IMAGE_ID"

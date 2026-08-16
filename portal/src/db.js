@@ -215,6 +215,16 @@ export function updateInstance(id, fields) {
   db.prepare(`UPDATE instances SET ${sets} WHERE id = @id`).run({ id, ...fields })
 }
 
+/** Preserve a deletion tombstone across concurrent start/stop/provision work. */
+export function updateInstanceUnlessDeleting(id, fields) {
+  const keys = Object.keys(fields)
+  if (keys.length === 0) return false
+  const sets = keys.map((k) => `${k} = @${k}`).join(', ')
+  return db.prepare(
+    `UPDATE instances SET ${sets} WHERE id = @id AND status <> 'deleting'`,
+  ).run({ id, ...fields }).changes === 1
+}
+
 export function deleteInstance(id) {
   db.prepare('DELETE FROM instances WHERE id = ?').run(id)
 }

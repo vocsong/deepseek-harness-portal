@@ -35,14 +35,14 @@ OTP delivery uses SMTP (nodemailer), which is required in production. Code loggi
 | Portal app | `portal/` | Fastify server: auth (OTP + password, bcrypt, session cookie), admin/user JSON API, static dashboard, subdomain reverse proxy |
 | Orchestrator | `portal/src/orchestrator.js` | `podman` CLI wrappers: run/start/stop/rm/logs, port allocation, health polling, background provisioning |
 | Storage | `portal/data/portal.db` | SQLite (better-sqlite3): users, otps, settings, instances, sessions |
-| dsh image | `image/Dockerfile` | Builds `dsh:latest` from an approved upstream commit, a reviewed dependency-security patch, and two documented source patches |
+| dsh image | `image/Dockerfile` | Builds immutable tag `dsh:47f9438-sec1` from an approved upstream commit, a reviewed dependency-security patch, and two documented source patches |
 | dsh clone | `dsh/` | Fresh `deepseek-harness` checkout (build context, gitignored) |
 
 ### Per-instance model
 
 Each user gets exactly one instance (`1 user : 1 instance`):
 
-- **Container** `dsh-<slug>`, `--cpus 2 --memory 2g`, `--restart unless-stopped`
+- **Container** `dsh-<slug>`, CPU/memory/swap/PID limits, read-only root + bounded tmpfs/logs, no capabilities, no-new-privileges, explicit isolated `pasta` networking, `--restart unless-stopped`
 - **Two volumes**: `<name>-home` (mounted at `$DSH_HOME` — sessions, settings, credentials) and `<name>-workspace` (mounted at `/workspace` — the agent's persistent cwd)
 - **Published** on `127.0.0.1:<port>` (never exposed beyond the host); the portal proxies to it
 - The proxy presents traffic to the instance **as loopback** (`changeOrigin` rewrites `Host` to `127.0.0.1:<port>` and the browser's `Origin` is dropped) so dsh's loopback-only settings/credentials methods work; `TRUSTED_HOST=<slug>.<instanceDomain>` is still passed as a fallback
@@ -86,7 +86,7 @@ git -C dsh checkout --detach 47f943859bef60e4160492346772ded9b24f765a
 ./build-image.sh
 ```
 
-Always use the script: it verifies the approved commit and patch, validates the context policy, and builds from a clean `git archive`. A direct `podman build` bypasses those controls.
+Always use the script: it verifies the approved commit and patch, validates the context policy, and builds from a clean `git archive`. A direct `podman build` bypasses those controls. Copy the script's printed `DSH_IMAGE=sha256:...` line into `.env`; production rejects mutable image tags.
 
 First build is slow (pnpm install + full harness build); result is ~2.5 GB.
 
@@ -153,7 +153,11 @@ See `.env.example`. The important ones:
 | `AUTH_RATE_WINDOW_MS` / `AUTH_RATE_BLOCK_MS` | 15 min / 15 min | Persistent authentication throttling window/block |
 | `OTP_RESEND_COOLDOWN_MS` | `60000` | Minimum interval between OTP requests per address/purpose |
 | `PORT_RANGE_START` / `END` | `18000` / `18100` | Host loopback port pool |
-| `INSTANCE_CPUS` / `INSTANCE_MEMORY` | `2` / `2g` | Per-instance limits |
+| `DSH_IMAGE` | required | Immutable `sha256:...` image ID printed by `./build-image.sh`; mutable tags are rejected in production |
+| `INSTANCE_CPUS` / `INSTANCE_MEMORY` / `INSTANCE_MEMORY_SWAP` | `2` / `2g` / `2g` | Per-instance compute limits |
+| `INSTANCE_PIDS_LIMIT` | `512` | Per-container process limit |
+| `INSTANCE_NETWORK` | `pasta` | Required isolated rootless network mode |
+| `INSTANCE_LOG_SIZE` / `INSTANCE_TMPFS_SIZE` | `10mb` / `64m` | Bounded runtime log and temporary storage |
 
 ## Operations
 
@@ -170,7 +174,7 @@ cloudflared tunnel --config ~/.cloudflared/<tunnel-name>.yml run <tunnel-name>
 ./run-portal.sh                      # 2) portal (foreground; wrap in nohup/& for background)
 ```
 
-Containers carry `--restart unless-stopped`, so running instances return on their own once the podman machine is back up. The portal re-queues any instance left `provisioning` at boot.
+Containers carry `--restart unless-stopped`; platform behavior after a WSL machine restart can still leave them stopped. The portal auto-starts the authorized user's container on launch and re-queues any instance left `provisioning` at boot.
 
 ## Security model
 

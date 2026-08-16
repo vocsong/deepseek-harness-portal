@@ -1,6 +1,7 @@
 dsh/
 portal/node_modules/
 portal/data/
+backups/
 *.log
 .env
 node_modules/

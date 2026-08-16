@@ -11,7 +11,7 @@ import {
   getInstanceBySlug, getInviteCode, getUserByEmail, getUserById,
   getUserByUsername, listInstancesWithUsers, listUsers, otpRegistrationEnabled,
   passwordLoginEnabled, purgeExpiredSessions, setInviteCode, setSetting, setUserPassword,
-  sessionForToken, updateInstance, updateUser, userForSession,
+  sessionForToken, updateInstance, updateInstanceUnlessDeleting, updateUser, userForSession,
 } from './db.js'
 import {
   createSession, destroySession, hashPassword, isValidEmail, LEGACY_SESSION_COOKIES,
@@ -22,7 +22,7 @@ import { sendOtpCode } from './mailer.js'
 import { RATE_POLICIES, clearRateLimit, clientIp, consumeRateLimit } from './rate-limit.js'
 import {
   allocatePort, containerLogs, containerName, containerRunning, provision,
-  removeContainer, startContainer, stopContainer,
+  removeContainer, startContainer, stopContainer, verifyPodmanRuntime,
 } from './orchestrator.js'
 import { closeUserSockets, setupProxy } from './proxy.js'
 
@@ -44,6 +44,7 @@ await fastify.register(fastifyStatic, {
 })
 
 validateConfig()
+await verifyPodmanRuntime()
 purgeExpiredSessions()
 ensureAdmin()
 setupProxy(fastify)
@@ -474,9 +475,10 @@ fastify.post('/api/instance/start', async (req, reply) => {
   const inst = getInstanceByUserId(user.id)
   if (!inst) return reply.code(404).send({ error: 'no instance' })
   if (inst.status === 'failed') return reply.code(400).send({ error: 'instance failed; contact admin' })
+  if (inst.status === 'deleting') return reply.code(409).send({ error: 'instance deletion is in progress' })
   await startContainer(inst.container_name)
   await waitUntilRunning(inst)
-  updateInstance(inst.id, { status: 'running', error: null })
+  updateInstanceUnlessDeleting(inst.id, { status: 'running', error: null })
   return { instance: getInstanceByUserId(user.id) }
 })
 
@@ -485,8 +487,9 @@ fastify.post('/api/instance/stop', async (req, reply) => {
   if (!user) return
   const inst = getInstanceByUserId(user.id)
   if (!inst) return reply.code(404).send({ error: 'no instance' })
+  if (inst.status === 'deleting') return reply.code(409).send({ error: 'instance deletion is in progress' })
   await stopContainer(inst.container_name)
-  updateInstance(inst.id, { status: 'stopped', error: null })
+  updateInstanceUnlessDeleting(inst.id, { status: 'stopped', error: null })
   return { instance: getInstanceByUserId(user.id) }
 })
 
@@ -549,8 +552,17 @@ fastify.post('/api/admin/users/:id/delete', async (req, reply) => {
   if (!user) return reply.code(404).send({ error: 'not found' })
   if (user.role === 'admin') return reply.code(400).send({ error: 'cannot delete an admin account' })
   const inst = getInstanceByUserId(user.id)
-  if (inst) await removeContainer(inst.container_name)
   closeUserSockets(user.id)
+  if (inst) {
+    updateInstance(inst.id, { status: 'deleting', error: null })
+    try {
+      await removeContainer(inst.container_name)
+    } catch (error) {
+      updateInstance(inst.id, { status: 'deleting', error: 'deletion failed; retry the operation' })
+      req.log.error(error)
+      return reply.code(500).send({ error: 'instance deletion failed; data was retained' })
+    }
+  }
   deleteUser(user.id)
   return { ok: true }
 })
@@ -566,9 +578,10 @@ fastify.post('/api/admin/instances/:id/start', async (req, reply) => {
   if (!requireAdmin(req, reply)) return
   const inst = getInstanceById(Number(req.params.id))
   if (!inst) return reply.code(404).send({ error: 'not found' })
+  if (inst.status === 'deleting') return reply.code(409).send({ error: 'instance deletion is in progress' })
   await startContainer(inst.container_name)
   await waitUntilRunning(inst)
-  updateInstance(inst.id, { status: 'running', error: null })
+  updateInstanceUnlessDeleting(inst.id, { status: 'running', error: null })
   return { ok: true }
 })
 
@@ -576,8 +589,9 @@ fastify.post('/api/admin/instances/:id/stop', async (req, reply) => {
   if (!requireAdmin(req, reply)) return
   const inst = getInstanceById(Number(req.params.id))
   if (!inst) return reply.code(404).send({ error: 'not found' })
+  if (inst.status === 'deleting') return reply.code(409).send({ error: 'instance deletion is in progress' })
   await stopContainer(inst.container_name)
-  updateInstance(inst.id, { status: 'stopped', error: null })
+  updateInstanceUnlessDeleting(inst.id, { status: 'stopped', error: null })
   return { ok: true }
 })
 
@@ -585,7 +599,14 @@ fastify.post('/api/admin/instances/:id/delete', async (req, reply) => {
   if (!requireAdmin(req, reply)) return
   const inst = getInstanceById(Number(req.params.id))
   if (!inst) return reply.code(404).send({ error: 'not found' })
-  await removeContainer(inst.container_name)
+  updateInstance(inst.id, { status: 'deleting', error: null })
+  try {
+    await removeContainer(inst.container_name)
+  } catch (error) {
+    updateInstance(inst.id, { status: 'deleting', error: 'deletion failed; retry the operation' })
+    req.log.error(error)
+    return reply.code(500).send({ error: 'instance deletion failed; data was retained' })
+  }
   deleteInstance(inst.id)
   return { ok: true }
 })
@@ -594,7 +615,9 @@ fastify.post('/api/admin/instances/:id/reprovision', async (req, reply) => {
   if (!requireAdmin(req, reply)) return
   const inst = getInstanceById(Number(req.params.id))
   if (!inst) return reply.code(404).send({ error: 'not found' })
-  updateInstance(inst.id, { status: 'provisioning', error: null })
+  if (!updateInstanceUnlessDeleting(inst.id, { status: 'provisioning', error: null })) {
+    return reply.code(409).send({ error: 'instance deletion is in progress' })
+  }
   provision(inst.id).catch((err) => console.error('[provision]', err))
   return { ok: true }
 })
@@ -657,8 +680,9 @@ function idleSweep() {
     if (last > deadline) continue
     stopContainer(inst.container_name)
       .then(() => {
-        updateInstance(inst.id, { status: 'stopped', error: null })
-        console.log(`[portal] idle: stopped instance "${inst.slug}"`)
+        if (updateInstanceUnlessDeleting(inst.id, { status: 'stopped', error: null })) {
+          console.log(`[portal] idle: stopped instance "${inst.slug}"`)
+        }
       })
       .catch((err) => console.error(`[portal] idle: failed to stop "${inst.slug}"`, err))
   }

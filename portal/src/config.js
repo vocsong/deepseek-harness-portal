@@ -9,7 +9,23 @@ function num(name, fallback) {
   return v === undefined || v === '' ? fallback : Number(v)
 }
 
+function bool(name, fallback) {
+  const v = process.env[name]
+  if (v === undefined || v === '') return fallback
+  if (v === 'true') return true
+  if (v === 'false') return false
+  throw new Error(`${name} must be true or false`)
+}
+
+function resourceBytes(value) {
+  const match = /^(\d+(?:\.\d+)?)\s*([kmgt]?)(?:i?b)?$/i.exec(String(value))
+  if (!match) return NaN
+  const powers = { '': 0, k: 1, m: 2, g: 3, t: 4 }
+  return Number(match[1]) * (1024 ** powers[match[2].toLowerCase()])
+}
+
 const domain = process.env.DOMAIN ?? 'example.com'
+const instanceMemory = process.env.INSTANCE_MEMORY ?? '2g'
 const portalOrigin = (() => {
   const raw = process.env.PORTAL_ORIGIN ?? `https://${domain}`
   try {
@@ -45,7 +61,8 @@ export const config = {
   sessionTouchIntervalMs: num('SESSION_TOUCH_INTERVAL_MS', 60 * 1000),
 
   dataDir: process.env.DATA_DIR ?? join(root, 'data'),
-  image: process.env.DSH_IMAGE ?? 'dsh:latest',
+  image: process.env.DSH_IMAGE ?? '',
+  podmanCommandTimeoutMs: num('PODMAN_COMMAND_TIMEOUT_MS', 60 * 1000),
 
   // Host loopback port pool for published instance ports.
   portRangeStart: num('PORT_RANGE_START', 18000),
@@ -58,7 +75,13 @@ export const config = {
 
   instanceStartTimeoutMs: num('INSTANCE_START_TIMEOUT_MS', 180000),
   instanceCpus: process.env.INSTANCE_CPUS ?? '2',
-  instanceMemory: process.env.INSTANCE_MEMORY ?? '2g',
+  instanceMemory,
+  instanceMemorySwap: process.env.INSTANCE_MEMORY_SWAP ?? instanceMemory,
+  instancePidsLimit: num('INSTANCE_PIDS_LIMIT', 512),
+  instanceNetwork: process.env.INSTANCE_NETWORK ?? 'pasta',
+  instanceLogSize: process.env.INSTANCE_LOG_SIZE ?? '10mb',
+  instanceTmpfsSize: process.env.INSTANCE_TMPFS_SIZE ?? '64m',
+  instanceReadOnlyRoot: bool('INSTANCE_READ_ONLY_ROOT', true),
 
   // Auto-stop instances after this much inactivity (no proxied requests).
   idleTimeoutMs: num('INSTANCE_IDLE_TIMEOUT_MS', 15 * 60 * 1000),
@@ -109,6 +132,7 @@ export function validateConfig() {
     ['AUTH_RATE_WINDOW_MS', config.authRateWindowMs],
     ['AUTH_RATE_BLOCK_MS', config.authRateBlockMs],
     ['OTP_RESEND_COOLDOWN_MS', config.otpResendCooldownMs],
+    ['PODMAN_COMMAND_TIMEOUT_MS', config.podmanCommandTimeoutMs],
   ]
   for (const [name, value] of positiveMs) {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive`)
@@ -116,5 +140,25 @@ export function validateConfig() {
   if (config.sessionIdleTtlMs > config.sessionAbsoluteTtlMs) {
     throw new Error('SESSION_IDLE_TTL_MS cannot exceed SESSION_ABSOLUTE_TTL_MS')
   }
+  if (!config.image) throw new Error('DSH_IMAGE must be configured')
+  if (config.environment === 'production' && !/^sha256:[a-f0-9]{64}$/.test(config.image)) {
+    throw new Error('production DSH_IMAGE must be an immutable sha256 image ID')
+  }
+  const cpus = Number(config.instanceCpus)
+  const memory = resourceBytes(config.instanceMemory)
+  const memorySwap = resourceBytes(config.instanceMemorySwap)
+  const logSize = resourceBytes(config.instanceLogSize)
+  const tmpfsSize = resourceBytes(config.instanceTmpfsSize)
+  if (!Number.isFinite(cpus) || cpus <= 0) throw new Error('INSTANCE_CPUS must be positive')
+  if (!Number.isFinite(memory) || memory <= 0) throw new Error('INSTANCE_MEMORY must be a positive size')
+  if (!Number.isFinite(memorySwap) || memorySwap < memory) {
+    throw new Error('INSTANCE_MEMORY_SWAP must be a valid size at least as large as INSTANCE_MEMORY')
+  }
+  if (!Number.isFinite(logSize) || logSize <= 0) throw new Error('INSTANCE_LOG_SIZE must be a positive size')
+  if (!Number.isFinite(tmpfsSize) || tmpfsSize <= 0) throw new Error('INSTANCE_TMPFS_SIZE must be a positive size')
+  if (!Number.isInteger(config.instancePidsLimit) || config.instancePidsLimit < 64) {
+    throw new Error('INSTANCE_PIDS_LIMIT must be an integer of at least 64')
+  }
+  if (config.instanceNetwork !== 'pasta') throw new Error('INSTANCE_NETWORK must be pasta for tenant isolation')
   if (!Number.isInteger(config.otpMaxAttempts) || config.otpMaxAttempts < 1) throw new Error('OTP_MAX_ATTEMPTS must be a positive integer')
 }
