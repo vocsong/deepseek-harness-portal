@@ -134,6 +134,8 @@ cloudflared tunnel --config ~/.cloudflared/<tunnel-name>.yml run <tunnel-name>
 
 Seeds an admin account on first boot from `ADMIN_EMAIL` / `ADMIN_NAME` / `ADMIN_PASSWORD`. The password must be explicitly set, non-placeholder, and at least 16 characters; startup refuses an unsafe bootstrap.
 
+`run-portal.sh` first applies the tenant egress firewall (`firewall/apply.sh`) and fails closed if the Podman machine is not running.
+
 ## Configuration (environment variables)
 
 See `.env.example`. The important ones:
@@ -185,7 +187,7 @@ cloudflared tunnel --config ~/.cloudflared/<tunnel-name>.yml run <tunnel-name>
 ./run-portal.sh                      # 2) portal (foreground; wrap in nohup/& for background)
 ```
 
-Containers carry `--restart unless-stopped`; platform behavior after a WSL machine restart can still leave them stopped. The portal auto-starts the authorized user's container on launch and re-queues any instance left `provisioning` at boot.
+Containers carry `--restart unless-stopped`; platform behavior after a WSL machine restart can still leave them stopped. The portal auto-starts the authorized user's container on launch and re-queues any instance left `provisioning` at boot. `run-portal.sh` re-applies the tenant egress firewall on every start (idempotent); if you restart the Podman machine while the portal is already running, run `firewall/apply.sh` manually.
 
 ## Security model
 
