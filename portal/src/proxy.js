@@ -102,7 +102,10 @@ function mayAccess(user, inst) {
 async function ensureRunningInner(inst) {
   if (inst.status === 'failed' || inst.status === 'deleting') return false
   if (inst.status === 'provisioning') return await containerRunning(inst.container_name)
-  if (inst.status === 'stopped' || !(await containerRunning(inst.container_name))) {
+  // Check the real container state rather than the DB status: a stale DB row
+  // can say "stopped" while the container is already running, and issuing a
+  // redundant start in that case can leave the status desynced.
+  if (!(await containerRunning(inst.container_name))) {
     await startContainer(inst.container_name)
   }
   if (!(await containerRunning(inst.container_name))) return false

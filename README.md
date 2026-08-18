@@ -189,6 +189,23 @@ cloudflared tunnel --config ~/.cloudflared/<tunnel-name>.yml run <tunnel-name>
 
 Containers carry `--restart unless-stopped`; platform behavior after a WSL machine restart can still leave them stopped. The portal auto-starts the authorized user's container on launch and re-queues any instance left `provisioning` at boot. `run-portal.sh` re-applies the tenant egress firewall on every start (idempotent); if you restart the Podman machine while the portal is already running, run `firewall/apply.sh` manually.
 
+## Troubleshooting
+
+**Symptom:** a tenant subdomain won't load, the container shows `Up` in `podman ps`, but `curl http://127.0.0.1:<port>` from Windows fails (while it returns 200 from inside the distro via `podman machine ssh <machine> 'curl http://127.0.0.1:<port>/'`).
+
+**Cause:** WSL2's localhost forwarder (`wslrelay.exe`) can wedge a stale port-forward entry after many container stop/start cycles (idle-stop + auto-start). A stale `wslrelay` process and orphaned `pasta` processes accumulate.
+
+**Fix:** restart the WSL2 VM and re-provision the stopped tenants:
+
+```sh
+wsl.exe --shutdown
+podman machine start <machine-name>
+# re-provision (or just launch each tenant; the portal auto-starts on access)
+./run-portal.sh
+```
+
+Updating the WSL engine to the latest release (currently blocked by a Windows Installer reboot) is the durable fix for the underlying `wslrelay` staleness.
+
 ## Security model
 
 - Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` when `COOKIE_DOMAIN` is set; bearer tokens are SHA-256-digested in SQLite with server-enforced 7-day absolute and 24-hour idle expiry.
